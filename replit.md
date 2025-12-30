@@ -19,6 +19,15 @@ The frontend uses a `ProjectService` for operations, while the backend persists 
 ### System Design Choices
 The application is a Single-Page Application (SPA) designed for stateless deployment with Gunicorn. It uses `requirements.txt` for dependency management. A `ProjectState` object centralizes state management with UUIDs and dirty-state tracking. `localStorage` is used for client-side crash recovery and complete JSON snapshots for draft restoration. Photo uploads to Dropbox are individual for reliability. A `SaveController` module manages all save operations to prevent race conditions and duplicate project creation, ensuring single-threaded saves and immediate ID syncing. Project loading errors are handled by clearing state and notifying the user. Navigation always lands on the Home screen, with deep linking as the only exception for auto-navigation to a specific project. A `NavigationController.refreshCurrentView()` allows for route-scoped data refreshes without resetting the entire view state. Backend responses are size-limited, and project listings are paginated with auto-pagination on the frontend. `localStorage` photo data is optimized by stripping base64 data for synced photos.
 
+### Routing (December 2025)
+The application uses **path-based routing** (not hash-based) for clean URLs:
+- Routes: `/home`, `/projects`, `/customer-info`, `/current-project`, `/deleted-projects`, `/print`
+- `NavigationController` uses `history.pushState` and listens to `popstate` for browser back/forward
+- Legacy hash URLs (e.g., `/#home`) are automatically redirected to path equivalents
+- Flask catch-all route serves `index.html` for all non-API paths, enabling deep linking
+- The `/api/config` endpoint provides feature flags (`googlePlacesEnabled`, `billsEnabled`)
+- `selectBusiness()` populates both `site-*` and `ci-*` input fields to work in all views
+
 ### Utility Bill Intake System
 This isolated feature extracts utility account and meter data from PDF bills using AI/OCR, stored in PostgreSQL. Database tables are initialized lazily.
 - **Upload + Extraction Flow**: Users upload PDFs, processed by an AI-powered `bill_extractor.py`, with progress updates, data validation, and user review/correction. Corrections are saved for AI training.
