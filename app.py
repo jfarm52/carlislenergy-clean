@@ -4364,5 +4364,17 @@ def get_project_print_pdf(project_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route("/<path:path>")
+def catch_all(path):
+    """Catch-all route for SPA deep-links - serves index.html for non-API paths"""
+    if path.startswith('api/'):
+        return jsonify({'error': 'Not found'}), 404
+    response = send_file('index.html')
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
