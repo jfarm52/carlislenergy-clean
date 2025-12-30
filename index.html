@@ -7536,6 +7536,7 @@
             // ==================================================================================
             billsFeatureEnabled: false,
             googlePlacesEnabled: false,
+            _configLoaded: false,
             
             async checkBillsFeature() {
                 // Use /api/config endpoint - no device/UA detection, purely server-driven
@@ -7544,6 +7545,7 @@
                     const data = await response.json();
                     this.billsFeatureEnabled = data.billsEnabled === true;
                     this.googlePlacesEnabled = data.googlePlacesEnabled === true;
+                    this._configLoaded = true;
                     
                     // Show/hide bills nav item
                     const billsNavItem = document.getElementById('billsNavItem');
@@ -7557,6 +7559,7 @@
                     console.error('[config] Could not fetch config:', e);
                     this.billsFeatureEnabled = false;
                     this.googlePlacesEnabled = false;
+                    this._configLoaded = true;
                 }
             },
             
@@ -10310,16 +10313,10 @@
             const container = document.getElementById('embeddedBillsContent');
             if (!container) return;
             
-            // Check if bills feature is enabled (require explicit true)
-            const billsEnabled = NavigationController.billsFeatureEnabled === true;
-            if (!billsEnabled) {
-                container.innerHTML = '<div style="text-align: center; color: #999; padding: 1rem;">Electric bills feature is not enabled.</div>';
-                return;
-            }
-            
-            // Get current project ID
+            // Get current project ID first - if no project, show save prompt immediately
             const projectId = ProjectState.currentProjectId;
             if (!projectId) {
+                console.log('[bills] No project ID - showing save prompt');
                 container.innerHTML = `
                     <div class="embedded-bills-upload">
                         <p style="color: #666; margin-bottom: 1rem;">Save the project first to upload electric bills.</p>
@@ -10328,10 +10325,49 @@
                 return;
             }
             
+            // Ensure config is loaded before checking billsFeatureEnabled
+            // This prevents showing "not enabled" when config just hasn't loaded yet
+            if (NavigationController.billsFeatureEnabled === undefined || 
+                (NavigationController.billsFeatureEnabled === false && !NavigationController._configLoaded)) {
+                console.log('[bills] Waiting for config to load...');
+                container.innerHTML = '<div class="bills-loading" style="text-align: center; padding: 2rem; color: #666;">Loading...</div>';
+                
+                // Retry after a short delay (config should load quickly)
+                setTimeout(() => {
+                    if (NavigationController.billsFeatureEnabled === true) {
+                        renderEmbeddedBillsSection();
+                    } else if (NavigationController._configLoaded) {
+                        // Config loaded but bills not enabled
+                        container.innerHTML = '<div style="text-align: center; color: #999; padding: 1rem;">Electric bills feature is not enabled.</div>';
+                    }
+                }, 500);
+                return;
+            }
+            
+            // Check if bills feature is enabled (require explicit true)
+            const billsEnabled = NavigationController.billsFeatureEnabled === true;
+            if (!billsEnabled) {
+                console.log('[bills] Bills feature not enabled');
+                container.innerHTML = '<div style="text-align: center; color: #999; padding: 1rem;">Electric bills feature is not enabled.</div>';
+                return;
+            }
+            
+            // Show loading state
+            container.innerHTML = '<div class="bills-loading" style="text-align: center; padding: 2rem; color: #666;">Loading bills data...</div>';
+            
+            // Setup timeout for fetch (10 second limit)
+            const BILLS_TIMEOUT_MS = 10000;
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), BILLS_TIMEOUT_MS);
+            
+            let groupedData = { files: [], accounts: [] };
             try {
                 // Fetch grouped bills data (includes files and extracted accounts/meters)
-                const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/grouped`);
-                const groupedData = response.ok ? await response.json() : { files: [], accounts: [] };
+                const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/grouped`, {
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                groupedData = response.ok ? await response.json() : { files: [], accounts: [] };
                 const files = groupedData.files || [];
                 
                 if (files.length === 0) {
@@ -10556,8 +10592,23 @@
                     }
                 }
             } catch (err) {
+                clearTimeout(timeoutId);
                 console.error('[embeddedBills] Error loading bills:', err);
-                container.innerHTML = '<div style="color: #dc3545; text-align: center; padding: 1rem;">Error loading bills data.</div>';
+                
+                // Handle timeout vs other errors
+                const isTimeout = err.name === 'AbortError';
+                const errorMsg = isTimeout 
+                    ? 'Bills data request timed out. Please try again.'
+                    : 'Error loading bills data.';
+                
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 1rem;">
+                        <p style="color: #dc3545; margin-bottom: 0.5rem;">${errorMsg}</p>
+                        <button onclick="renderEmbeddedBillsSection()" class="button secondary" style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">
+                            🔄 Retry
+                        </button>
+                    </div>
+                `;
             }
         }
         
