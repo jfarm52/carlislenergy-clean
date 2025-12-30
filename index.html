@@ -6024,8 +6024,15 @@
                 
                 // Initial navigation based on URL path (support both path and legacy hash)
                 setTimeout(() => {
-                    const path = window.location.pathname.replace(/^\//, '');
+                    let path = window.location.pathname.replace(/^\//, '');
                     const hash = window.location.hash.replace('#', '');
+                    
+                    // Handle encoded hash URLs (e.g., /%23home -> /home)
+                    if (path.startsWith('%23') || path.startsWith('#')) {
+                        const cleanPath = path.replace(/^(%23|#)/, '');
+                        window.history.replaceState(null, '', '/' + cleanPath);
+                        path = cleanPath;
+                    }
                     
                     // Handle legacy hash URLs by redirecting to path
                     if (hash && !path) {
