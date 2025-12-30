@@ -9,9 +9,9 @@ from flask import Blueprint, request, jsonify
 
 upload_bp = Blueprint("upload_bp", __name__)
 
-APP_KEY = os.environ["DROPBOX_APP_KEY"]
-APP_SECRET = os.environ["DROPBOX_APP_SECRET"]
-REFRESH_TOKEN = os.environ["DROPBOX_REFRESH_TOKEN"]
+APP_KEY = os.environ.get("DROPBOX_APP_KEY", "")
+APP_SECRET = os.environ.get("DROPBOX_APP_SECRET", "")
+REFRESH_TOKEN = os.environ.get("DROPBOX_REFRESH_TOKEN", "")
 
 BASE_PATH = "/1. CES/1. FRIGITEK/1. FRIGITEK ANALYSIS/SiteWalk Exports"
 PP_ROOT = "/1. CES/1. FRIGITEK/1. FRIGITEK ANALYSIS/2. PENDING Proposals"

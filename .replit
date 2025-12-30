@@ -1,11 +1,11 @@
-modules = ["web", "python-3.11", "postgresql-16"]
+modules = ["web", "python-3.11"]
 [agent]
 expertMode = true
 integrations = ["python_openai:1.0.0"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["fontconfig", "freetype", "ghostscript", "glib", "glibcLocales", "gumbo", "harfbuzz", "jbig2dec", "libjpeg_turbo", "mupdf", "openjpeg", "pango", "swig", "tesseract", "xcbuild", "zip"]
+packages = ["fontconfig", "freetype", "ghostscript", "glib", "glibcLocales", "gumbo", "harfbuzz", "jbig2dec", "libjpeg_turbo", "mupdf", "openjpeg", "openssl", "pango", "postgresql", "swig", "tesseract", "xcbuild", "zip"]
 
 [workflows]
 runButton = "Project"
@@ -17,31 +17,27 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "web-server"
+args = "Start application"
 
 [[workflows.workflow]]
-name = "web-server"
+name = "Start application"
 author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python app.py"
+args = "gunicorn --bind 0.0.0.0:5000 --reuse-port --reload main:app"
 waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [[ports]]
 localPort = 5000
 externalPort = 80
 
-[[ports]]
-localPort = 5001
-externalPort = 3000
-
 [deployment]
 deploymentTarget = "autoscale"
-run = ["gunicorn", "--bind=0.0.0.0:5000", "--reuse-port", "--workers=2", "--timeout=120", "app:app"]
+run = ["gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
 build = ["pip", "install", "-r", "requirements.txt"]
 
 [userenv]
