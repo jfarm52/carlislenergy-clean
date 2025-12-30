@@ -4089,11 +4089,11 @@
             <button id="navDrawerCloseBtn" class="nav-drawer-close">&times;</button>
         </div>
         <ul class="nav-drawer-items">
-            <li><a href="#home" data-nav="home"><span class="nav-icon">🏠</span> Home</a></li>
-            <li><a href="#projects" data-nav="projects"><span class="nav-icon">📁</span> Projects</a></li>
-            <li><a href="#deleted-projects" data-nav="deletedProjects"><span class="nav-icon">🗑️</span> Recently Deleted</a></li>
-            <li><a href="#customer-info" data-nav="customerInfo"><span class="nav-icon">👤</span> Customer Info</a></li>
-            <li><a href="#current-project" data-nav="currentProject"><span class="nav-icon">📋</span> Current Project</a></li>
+            <li><a href="/home" data-nav="home"><span class="nav-icon">🏠</span> Home</a></li>
+            <li><a href="/projects" data-nav="projects"><span class="nav-icon">📁</span> Projects</a></li>
+            <li><a href="/deleted-projects" data-nav="deletedProjects"><span class="nav-icon">🗑️</span> Recently Deleted</a></li>
+            <li><a href="/customer-info" data-nav="customerInfo"><span class="nav-icon">👤</span> Customer Info</a></li>
+            <li><a href="/current-project" data-nav="currentProject"><span class="nav-icon">📋</span> Current Project</a></li>
             <!-- Utility Bills menu item removed - now embedded in Current Project view -->
             <!-- <li id="billsNavItem" style="display:none;"><a href="#utility-bills" data-nav="utilityBills"><span class="nav-icon">📄</span> Utility Bills</a></li> -->
         </ul>
@@ -6022,11 +6022,17 @@
                     ProjectState.siteData.visitDate = siteData.visitDate;
                 }
                 
-                // Initial navigation based on URL hash
+                // Initial navigation based on URL path (support both path and legacy hash)
                 setTimeout(() => {
+                    const path = window.location.pathname.replace(/^\//, '');
                     const hash = window.location.hash.replace('#', '');
-                    if (hash) {
-                        this.handleHashChange();
+                    
+                    // Handle legacy hash URLs by redirecting to path
+                    if (hash && !path) {
+                        window.history.replaceState(null, '', '/' + hash);
+                        this.handlePathChange();
+                    } else if (path) {
+                        this.handlePathChange();
                     } else {
                         this.setView('home');
                     }
@@ -6066,16 +6072,16 @@
                 document.getElementById('navDrawerOverlay').classList.remove('show');
             },
             
-            // Setup hash change listener
+            // Setup popstate listener for path-based routing
             setupHashListener() {
-                window.addEventListener('hashchange', () => this.handleHashChange());
+                window.addEventListener('popstate', () => this.handlePathChange());
             },
             
-            handleHashChange() {
-                const hash = window.location.hash.replace('#', '') || 'home';
+            handlePathChange() {
+                const path = window.location.pathname.replace(/^\//, '') || 'home';
                 
-                // Map hash to view
-                const hashToView = {
+                // Map path to view
+                const pathToView = {
                     'home': 'home',
                     'projects': 'projects',
                     'deleted-projects': 'deletedProjects',
@@ -6085,9 +6091,9 @@
                     'print': 'printView'
                 };
                 
-                const view = hashToView[hash] || 'home';
+                const view = pathToView[path] || 'home';
                 if (view !== this.currentView) {
-                    this.setView(view, false); // false = don't update hash again
+                    this.setView(view, false); // false = don't update URL again
                 }
             },
             
@@ -6117,18 +6123,21 @@
                 
                 this.currentView = viewName;
                 
-                // Update URL hash
+                // Update URL path (using pushState for clean URLs)
                 if (updateHash) {
-                    const viewToHash = {
-                        'home': '#home',
-                        'projects': '#projects',
-                        'deletedProjects': '#deleted-projects',
-                        'customerInfo': '#customer-info',
-                        'currentProject': '#current-project',
-                        'utilityBills': '#utility-bills',
-                        'printView': '#print'
+                    const viewToPath = {
+                        'home': '/home',
+                        'projects': '/projects',
+                        'deletedProjects': '/deleted-projects',
+                        'customerInfo': '/customer-info',
+                        'currentProject': '/current-project',
+                        'utilityBills': '/utility-bills',
+                        'printView': '/print'
                     };
-                    window.location.hash = viewToHash[viewName] || '#home';
+                    const newPath = viewToPath[viewName] || '/home';
+                    if (window.location.pathname !== newPath) {
+                        window.history.pushState(null, '', newPath);
+                    }
                 }
                 
                 // Hide all views
@@ -11604,7 +11613,7 @@
                     if (context === 'modal') {
                         document.getElementById('loadProjectModal').classList.add('hidden');
                     } else {
-                        window.location.hash = '#home';
+                        NavigationController.setView('home');
                     }
                 }
             });
@@ -18398,24 +18407,41 @@
 
         // Auto-fill form when a business is selected
         function selectBusiness(biz) {
-            const customerInput = document.getElementById('site-customer');
-            const streetInput = document.getElementById('site-street');
-            const cityInput = document.getElementById('site-city');
-            const stateInput = document.getElementById('site-state');
-            const zipInput = document.getElementById('site-zip');
+            console.log('[selectBusiness] Filling form with:', biz.name, biz.address);
             
-            // Fill in the form fields
-            if (customerInput) customerInput.value = biz.name || '';
-            if (streetInput) streetInput.value = biz.address || '';
-            if (cityInput) cityInput.value = biz.city || '';
-            if (stateInput) stateInput.value = (biz.state || 'CA').toUpperCase();
-            if (zipInput) zipInput.value = biz.zip || '';
+            // Fill main site-* fields (used in main form)
+            const siteCustomer = document.getElementById('site-customer');
+            const siteStreet = document.getElementById('site-street');
+            const siteCity = document.getElementById('site-city');
+            const siteState = document.getElementById('site-state');
+            const siteZip = document.getElementById('site-zip');
             
-            // After programmatic fill, update clear button visibility on each field
-            // NOTE: We do NOT dispatch 'input' events here because that would trigger
-            // autocomplete dropdowns to open for every field. We only need to update
-            // the clear button visibility.
-            [customerInput, streetInput, cityInput, stateInput, zipInput].forEach(input => {
+            if (siteCustomer) siteCustomer.value = biz.name || '';
+            if (siteStreet) siteStreet.value = biz.address || '';
+            if (siteCity) siteCity.value = biz.city || '';
+            if (siteState) siteState.value = (biz.state || 'CA').toUpperCase();
+            if (siteZip) siteZip.value = biz.zip || '';
+            
+            // Also fill ci-* fields (used in Customer Info view)
+            const ciCustomer = document.getElementById('ci-customer');
+            const ciStreet = document.getElementById('ci-street');
+            const ciCity = document.getElementById('ci-city');
+            const ciState = document.getElementById('ci-state');
+            const ciZip = document.getElementById('ci-zip');
+            
+            if (ciCustomer) ciCustomer.value = biz.name || '';
+            if (ciStreet) ciStreet.value = biz.address || '';
+            if (ciCity) ciCity.value = biz.city || '';
+            if (ciState) ciState.value = (biz.state || 'CA').toUpperCase();
+            if (ciZip) ciZip.value = biz.zip || '';
+            
+            // Log which fields were populated
+            const sitePopulated = [siteCustomer, siteStreet, siteCity, siteState, siteZip].filter(el => el).length;
+            const ciPopulated = [ciCustomer, ciStreet, ciCity, ciState, ciZip].filter(el => el).length;
+            console.log('[selectBusiness] Populated site-* fields:', sitePopulated, ', ci-* fields:', ciPopulated);
+            
+            // Update clear button visibility for all fields
+            [siteCustomer, siteStreet, siteCity, siteState, siteZip, ciCustomer, ciStreet, ciCity, ciState, ciZip].forEach(input => {
                 if (input) {
                     updateClearButtonVisibility(input);
                 }
@@ -18432,13 +18458,17 @@
             // Close modal
             document.getElementById('nearbyBusinessesModal').classList.remove('show');
             
-            // Auto-save the changes to localStorage
+            // Update siteData and ProjectState
             siteData.customer = biz.name || '';
             siteData.street = biz.address || '';
             siteData.city = biz.city || '';
             siteData.state = (biz.state || 'CA').toUpperCase();
             siteData.zip = biz.zip || '';
             siteData.utility = computeUtilityValue();
+            
+            // Sync to ProjectState
+            Object.assign(ProjectState.siteData, siteData);
+            
             SaveController.queueSave('nearby-business-select');
         }
         
