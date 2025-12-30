@@ -4150,8 +4150,10 @@ def get_config():
     This endpoint is used by the frontend to check feature availability
     without any device/UA detection - purely server-driven.
     """
+    places_enabled = bool(os.getenv("GOOGLE_PLACES_API_KEY"))
     return jsonify({
-        'billsEnabled': BILLS_FEATURE_ENABLED
+        'billsEnabled': BILLS_FEATURE_ENABLED,
+        'googlePlacesEnabled': places_enabled
     })
 
 

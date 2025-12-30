@@ -7134,12 +7134,41 @@
                 
                 // Wire up Show Businesses Nearby button
                 document.getElementById('ci-show-businesses').addEventListener('click', () => {
-                    if (typeof showNearbyBusinesses === 'function') {
+                    // Check if Google Places API is configured
+                    if (!NavigationController.googlePlacesEnabled) {
+                        showToast('Places API key not configured. Please contact administrator.', 'warning');
+                        return;
+                    }
+                    
+                    // Trigger the use location button if it exists
+                    const useLocationBtn = document.getElementById('useLocationBtn');
+                    if (useLocationBtn) {
+                        useLocationBtn.click();
+                    } else if (typeof showNearbyBusinesses === 'function') {
                         showNearbyBusinesses();
-                    } else if (typeof fetchNearbyPlaces === 'function') {
-                        fetchNearbyPlaces();
                     } else {
-                        showToast('Location search feature not available.', 'warning');
+                        // Request geolocation and call API directly
+                        if (!navigator.geolocation) {
+                            showToast('Geolocation is not supported by your browser.', 'warning');
+                            return;
+                        }
+                        navigator.geolocation.getCurrentPosition(
+                            (position) => {
+                                const lat = position.coords.latitude;
+                                const lng = position.coords.longitude;
+                                window.location.href = `#nearby?lat=${lat}&lng=${lng}`;
+                            },
+                            (error) => {
+                                if (error.code === error.PERMISSION_DENIED) {
+                                    showToast('Location permission denied. Please allow location access.', 'warning');
+                                } else if (error.code === error.TIMEOUT) {
+                                    showToast('Location request timed out. Please try again.', 'warning');
+                                } else {
+                                    showToast('Could not get your location. Please try again.', 'warning');
+                                }
+                            },
+                            { timeout: 10000, enableHighAccuracy: true }
+                        );
                     }
                 });
                 
@@ -7497,6 +7526,7 @@
             // BILLS VIEW (Isolated feature - uses PostgreSQL, not JSON storage)
             // ==================================================================================
             billsFeatureEnabled: false,
+            googlePlacesEnabled: false,
             
             async checkBillsFeature() {
                 // Use /api/config endpoint - no device/UA detection, purely server-driven
@@ -7504,6 +7534,7 @@
                     const response = await fetch('/api/config');
                     const data = await response.json();
                     this.billsFeatureEnabled = data.billsEnabled === true;
+                    this.googlePlacesEnabled = data.googlePlacesEnabled === true;
                     
                     // Show/hide bills nav item
                     const billsNavItem = document.getElementById('billsNavItem');
@@ -7512,9 +7543,11 @@
                     }
                     
                     console.log('[config] Bills feature enabled:', this.billsFeatureEnabled);
+                    console.log('[config] Google Places enabled:', this.googlePlacesEnabled);
                 } catch (e) {
                     console.error('[config] Could not fetch config:', e);
                     this.billsFeatureEnabled = false;
+                    this.googlePlacesEnabled = false;
                 }
             },
             
