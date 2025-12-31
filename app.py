@@ -134,7 +134,9 @@ CORS(app)
 # ENVIRONMENT VARIABLE LOADING - Support .env file for local dev
 # ==================================================================================
 def load_env_file():
-    """Try to load .env file if python-dotenv is available and .env exists"""
+    """Try to load .env file if python-dotenv is available and .env exists.
+    Fails silently on permission errors (e.g., sandboxed environments).
+    """
     try:
         from dotenv import load_dotenv
         env_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -145,7 +147,12 @@ def load_env_file():
     except ImportError:
         # python-dotenv not installed - that's okay, we'll use env vars only
         pass
+    except (PermissionError, OSError):
+        # Silently fail on permission errors (e.g., sandboxed environments)
+        # The app will still work if the key is provided via environment variable
+        pass
     except Exception as e:
+        # Only log non-permission errors
         print(f'[env] Warning: Could not load .env file: {e}')
     return False
 
@@ -153,11 +160,15 @@ def get_google_places_api_key():
     """
     Get Google Places API key from environment variable or .env file.
     Returns the key string, or None if not found.
+    Prefers os.environ over .env file.
     """
-    # Try loading .env file first (for local dev)
-    load_env_file()
+    # Check environment variable first (preferred for local dev)
+    api_key = os.getenv('GOOGLE_PLACES_API_KEY')
+    if api_key:
+        return api_key
     
-    # Get from environment variable
+    # Fallback: try loading from .env file if python-dotenv is available
+    load_env_file()
     api_key = os.getenv('GOOGLE_PLACES_API_KEY')
     return api_key
 
@@ -2044,15 +2055,31 @@ def nearby_businesses():
         response.raise_for_status()
         data = response.json()
         
-        print(f'[nearby-businesses] Google API status: {data.get("status")}')
+        api_status = data.get('status')
+        print(f'[nearby-businesses] Google API status: {api_status}')
         
-        if data.get('status') == 'ZERO_RESULTS':
+        if api_status == 'ZERO_RESULTS':
             print('[nearby-businesses] No results found')
             return jsonify([]), 200
         
-        if data.get('status') != 'OK':
-            print(f'[nearby-businesses] ERROR: Google API returned {data.get("status")}')
-            return jsonify([]), 200  # Return empty array instead of error
+        if api_status != 'OK':
+            error_message = data.get('error_message', 'Unknown error')
+            # Log the error (redact API key from any error messages)
+            log_msg = f'[nearby-businesses] ERROR: Google API returned {api_status}'
+            if error_message:
+                log_msg += f' - {error_message}'
+            print(log_msg)
+            
+            # Return a user-friendly error message
+            user_error = f'Google Places API error: {api_status}'
+            if api_status == 'REQUEST_DENIED':
+                user_error = 'Google Places API access denied. Please check API key configuration.'
+            elif api_status == 'INVALID_REQUEST':
+                user_error = 'Invalid request to Google Places API. Please try a different location.'
+            elif api_status == 'OVER_QUERY_LIMIT':
+                user_error = 'Google Places API quota exceeded. Please try again later.'
+            
+            return jsonify({'error': user_error}), 503
         
         # Extract useful info from results
         businesses = []

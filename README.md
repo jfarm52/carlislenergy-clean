@@ -71,6 +71,23 @@ python main.py
 
 Then open `http://localhost:5000`.
 
+### Local Dev (with Google Places API)
+
+To use Google Places features (business search, address autocomplete), set the API key when starting the server:
+
+```bash
+GOOGLE_PLACES_API_KEY=your_key_here python main.py
+```
+
+Or export it in your shell session:
+
+```bash
+export GOOGLE_PLACES_API_KEY=your_key_here
+python main.py
+```
+
+**Note:** The app will work without the API key, but Google Places features (like "Show Businesses Nearby") will return an error message instead of results.
+
 ---
 
 ## Key environment variables
