@@ -91,6 +91,16 @@ def log_exception(exc_type, exc_value, exc_tb):
     
 sys.excepthook = log_exception
 
+# Load environment variables from .env file (if it exists)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("[ENV] Loaded environment variables from .env file")
+except ImportError:
+    print("[ENV] python-dotenv not installed - skipping .env file loading")
+except Exception as e:
+    print(f"[ENV] Warning: Could not load .env file: {e}")
+
 from flask import Flask, send_file, jsonify, request, redirect
 from flask_cors import CORS
 import json
