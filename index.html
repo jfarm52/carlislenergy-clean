@@ -18024,17 +18024,26 @@
                 
                 try {
                     const response = await fetch(`/api/nearby-businesses?lat=${lat}&lng=${lng}`);
+                    const data = await response.json();
                     
-                    if (!response.ok) {
-                        throw new Error(`Server error: ${response.status}`);
+                    // Check if response is an error object
+                    if (!response.ok || (data.error && !Array.isArray(data))) {
+                        const errorMsg = data.error || `Server error: ${response.status}`;
+                        console.error('Nearby businesses API error:', errorMsg);
+                        loadMsg.textContent = errorMsg;
+                        loadMsg.style.color = '#d9534f';
+                        loadMsg.style.display = 'block';
+                        list.innerHTML = '';
+                        return;
                     }
                     
-                    const businesses = await response.json();
+                    // Response should be an array of businesses
+                    const businesses = Array.isArray(data) ? data : [];
                     console.log(`✓ Received ${businesses.length} businesses from API`);
                     
                     loadMsg.style.display = 'none';
                     
-                    if (!businesses || !Array.isArray(businesses) || businesses.length === 0) {
+                    if (businesses.length === 0) {
                         list.innerHTML = '<p style="color:#666; padding: 1rem; text-align: center;">No nearby businesses found.<br>Try a different location or enter address manually.</p>';
                         return;
                     }

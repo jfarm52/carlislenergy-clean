@@ -131,6 +131,37 @@ app = Flask(__name__, static_folder=None)
 CORS(app)
 
 # ==================================================================================
+# ENVIRONMENT VARIABLE LOADING - Support .env file for local dev
+# ==================================================================================
+def load_env_file():
+    """Try to load .env file if python-dotenv is available and .env exists"""
+    try:
+        from dotenv import load_dotenv
+        env_path = os.path.join(os.path.dirname(__file__), '.env')
+        if os.path.exists(env_path):
+            load_dotenv(env_path)
+            print('[env] Loaded .env file')
+            return True
+    except ImportError:
+        # python-dotenv not installed - that's okay, we'll use env vars only
+        pass
+    except Exception as e:
+        print(f'[env] Warning: Could not load .env file: {e}')
+    return False
+
+def get_google_places_api_key():
+    """
+    Get Google Places API key from environment variable or .env file.
+    Returns the key string, or None if not found.
+    """
+    # Try loading .env file first (for local dev)
+    load_env_file()
+    
+    # Get from environment variable
+    api_key = os.getenv('GOOGLE_PLACES_API_KEY')
+    return api_key
+
+# ==================================================================================
 # RESPONSE SIZE LIMITER - BLOCK payloads > 1MB (dev) or > 2MB (prod)
 # ==================================================================================
 import os as _os_for_env
@@ -1849,9 +1880,11 @@ def place_details():
         if not place_id:
             return jsonify({'error': 'place_id required'}), 400
         
-        api_key = os.getenv('GOOGLE_PLACES_API_KEY')
+        api_key = get_google_places_api_key()
         if not api_key:
-            return jsonify({'error': 'API key not configured'}), 500
+            error_msg = 'Google Places API key not configured. Set GOOGLE_PLACES_API_KEY environment variable or add it to .env file.'
+            print(f'[place-details] ERROR: {error_msg}')
+            return jsonify({'error': error_msg}), 503
         
         # Get place details from Google
         url = 'https://maps.googleapis.com/maps/api/place/details/json'
@@ -1913,9 +1946,11 @@ def place_autocomplete():
         if len(input_str) < 2:
             return jsonify([]), 200
         
-        api_key = os.getenv('GOOGLE_PLACES_API_KEY')
+        api_key = get_google_places_api_key()
         if not api_key:
-            return jsonify({'error': 'API key not configured'}), 500
+            error_msg = 'Google Places API key not configured. Set GOOGLE_PLACES_API_KEY environment variable or add it to .env file.'
+            print(f'[place-autocomplete] ERROR: {error_msg}')
+            return jsonify({'error': error_msg}), 503
         
         # Use Google Places Autocomplete API
         url = 'https://maps.googleapis.com/maps/api/place/autocomplete/json'
@@ -1985,13 +2020,14 @@ def nearby_businesses():
         
         if not lat or not lng:
             print('[nearby-businesses] ERROR: Missing lat or lng')
-            return jsonify([]), 200  # Return empty array instead of error
+            return jsonify({'error': 'Missing required parameters: lat and lng'}), 400
         
-        # Get API key from environment
-        api_key = os.getenv('GOOGLE_PLACES_API_KEY')
+        # Get API key from environment or .env file
+        api_key = get_google_places_api_key()
         if not api_key:
-            print('[nearby-businesses] ERROR: Google Places API key not configured')
-            return jsonify([]), 200  # Return empty array instead of error
+            error_msg = 'Google Places API key not configured. Set GOOGLE_PLACES_API_KEY environment variable or add it to .env file.'
+            print(f'[nearby-businesses] ERROR: {error_msg}')
+            return jsonify({'error': error_msg}), 503
         
         # Call Google Places Nearby Search API
         # Search for commercial businesses (types: restaurant, store, etc.)
@@ -2092,13 +2128,15 @@ def nearby_businesses():
         return jsonify(businesses), 200
     
     except requests.Timeout:
-        print('[nearby-businesses] ERROR: Google API request timeout')
-        return jsonify([]), 200  # Return empty array instead of error
+        error_msg = 'Google Places API request timed out. Please try again.'
+        print(f'[nearby-businesses] ERROR: {error_msg}')
+        return jsonify({'error': error_msg}), 504
     except Exception as e:
-        print(f'[nearby-businesses] ERROR: {e}')
+        error_msg = f'Error fetching nearby businesses: {str(e)}'
+        print(f'[nearby-businesses] ERROR: {error_msg}')
         import traceback
         traceback.print_exc()
-        return jsonify([]), 200  # Return empty array instead of error
+        return jsonify({'error': error_msg}), 500
 
 @app.route('/api/geocode', methods=['GET'])
 def geocode_address():
@@ -2116,11 +2154,12 @@ def geocode_address():
             print('[geocode] ERROR: Missing address parameter')
             return jsonify({'error': 'Missing address parameter'}), 400
         
-        # Get API key from environment
-        api_key = os.getenv('GOOGLE_PLACES_API_KEY')
+        # Get API key from environment or .env file
+        api_key = get_google_places_api_key()
         if not api_key:
-            print('[geocode] ERROR: Google API key not configured')
-            return jsonify({'error': 'API key not configured'}), 500
+            error_msg = 'Google Places API key not configured. Set GOOGLE_PLACES_API_KEY environment variable or add it to .env file.'
+            print(f'[geocode] ERROR: {error_msg}')
+            return jsonify({'error': error_msg}), 503
         
         # Call Google Maps Geocoding API
         url = 'https://maps.googleapis.com/maps/api/geocode/json'
