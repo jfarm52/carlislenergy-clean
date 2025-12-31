@@ -127,7 +127,7 @@ bill_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix='bill_proce
 # Lock for thread-safe access to stored_data
 data_lock = threading.Lock()
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=None)
 CORS(app)
 
 # ==================================================================================
@@ -4386,9 +4386,16 @@ def get_project_print_pdf(project_id):
 
 @app.route("/<path:path>")
 def catch_all(path):
-    """Catch-all route for SPA deep-links - serves index.html for non-API paths"""
+    """Catch-all route for SPA deep-links - serves index.html for non-API and non-static paths"""
+    # Don't serve index.html for API routes (should be handled by specific routes, but fallback to 404)
     if path.startswith('api/'):
         return jsonify({'error': 'Not found'}), 404
+    
+    # Don't serve index.html for static file requests (should be handled by /static/ route)
+    if path.startswith('static/'):
+        return jsonify({'error': 'Not found'}), 404
+    
+    # For all other paths (SPA routes like /home, /customer-info, etc.), serve index.html
     response = send_file('index.html')
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
