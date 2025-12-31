@@ -5981,6 +5981,35 @@
         }
         
         // ==================================================================================
+        // GOOGLE PLACES UI HELPERS
+        // ==================================================================================
+        function updateGooglePlacesUI() {
+            // Function is called before/after NavigationController init; guard accordingly.
+            const enabled = (typeof NavigationController !== 'undefined') && NavigationController.googlePlacesEnabled === true;
+            const helpMsg = enabled
+                ? 'Show nearby businesses at your location'
+                : 'Google Places not configured. Set GOOGLE_PLACES_API_KEY in .env and restart the server.';
+            
+            const buttonIds = ['useLocationBtn', 'ci-show-businesses'];
+            buttonIds.forEach((id) => {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+                
+                btn.title = helpMsg;
+                
+                if (enabled) {
+                    btn.disabled = false;
+                    btn.style.opacity = '';
+                    btn.style.cursor = 'pointer';
+                } else {
+                    btn.disabled = true;
+                    btn.style.opacity = '0.6';
+                    btn.style.cursor = 'not-allowed';
+                }
+            });
+        }
+        
+        // ==================================================================================
         // NAVIGATION CONTROLLER - Manages currentView and view rendering
         // ==================================================================================
         const NavigationController = {
@@ -7152,7 +7181,7 @@
                 document.getElementById('ci-show-businesses').addEventListener('click', () => {
                     // Check if Google Places API is configured
                     if (!NavigationController.googlePlacesEnabled) {
-                        showToast('Places API key not configured. Please contact administrator.', 'warning');
+                        showToast('Google Places not configured. Set GOOGLE_PLACES_API_KEY in .env and restart the server.', 'warning');
                         return;
                     }
                     
@@ -7187,6 +7216,9 @@
                         );
                     }
                 });
+                
+                // Ensure button reflects current config state
+                updateGooglePlacesUI();
                 
                 // Save button handler - async to support auto-create project
                 document.getElementById('saveCustomerInfoBtn').addEventListener('click', async () => {
@@ -7562,11 +7594,15 @@
                     
                     console.log('[config] Bills feature enabled:', this.billsFeatureEnabled);
                     console.log('[config] Google Places enabled:', this.googlePlacesEnabled);
+                    
+                    // Update UI elements that depend on Google Places availability
+                    updateGooglePlacesUI();
                 } catch (e) {
                     console.error('[config] Could not fetch config:', e);
                     this.billsFeatureEnabled = false;
                     this.googlePlacesEnabled = false;
                     this._configLoaded = true;
+                    updateGooglePlacesUI();
                 }
             },
             
@@ -18190,6 +18226,13 @@
             // Main button click handler
             useLocationBtn.addEventListener('click', (e) => {
                 e.preventDefault();
+            
+            // If Places API isn't enabled, don't request location (avoids confusing empty results)
+            if (!NavigationController.googlePlacesEnabled) {
+                showToast('Google Places not configured. Set GOOGLE_PLACES_API_KEY in .env and restart the server.', 'warning');
+                return;
+            }
+            
                 requestGeolocation();
             });
 

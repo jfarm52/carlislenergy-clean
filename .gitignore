@@ -30,6 +30,7 @@ Thumbs.db
 .venv
 env/
 venv/
+.run/
 full-project*.zip
 full-project-part-*
 zitta99X
