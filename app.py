@@ -92,10 +92,18 @@ def log_exception(exc_type, exc_value, exc_tb):
 sys.excepthook = log_exception
 
 # Load environment variables from .env file (if it exists)
+# NOTE: load_dotenv() returns False when no .env is found; log accurately to reduce confusion.
 try:
-    from dotenv import load_dotenv
-    load_dotenv()
-    print("[ENV] Loaded environment variables from .env file")
+    from dotenv import load_dotenv, find_dotenv
+    _dotenv_path = find_dotenv(usecwd=True)
+    if _dotenv_path:
+        _loaded = load_dotenv(dotenv_path=_dotenv_path, override=False)
+        if _loaded:
+            print(f"[ENV] Loaded environment variables from .env ({_dotenv_path})")
+        else:
+            print(f"[ENV] Found .env at {_dotenv_path}, but no variables were loaded/changed")
+    else:
+        print("[ENV] No .env file found (set env vars via shell or create .env from .env.example)")
 except ImportError:
     print("[ENV] python-dotenv not installed - skipping .env file loading")
 except Exception as e:
