@@ -10862,16 +10862,16 @@
                         facilitySumAvgPerDay += meter.avgCostPerDay || meter.avgCostPerDayDollars || 0;
                         for (const bill of (meter.bills || [])) {
                             // Create unique key for deduplication
-                            const periodStart = bill.periodStart || '';
-                            const periodEnd = bill.periodEnd || '';
+                            const periodStart = bill.period_start || bill.periodStart || '';
+                            const periodEnd = bill.period_end || bill.periodEnd || '';
                             const billKey = `${meterNumber}|${periodStart}|${periodEnd}`;
 
                             // Only count each unique period once per meter
                             if (!seenBillKeys.has(billKey)) {
                                 seenBillKeys.add(billKey);
                                 facilityBillCount++;
-                                facilityTotalKwh += bill.totalKwh || 0;
-                                facilityTotalCost += bill.totalAmountDue || 0;
+                                facilityTotalKwh += bill.total_kwh || bill.totalKwh || 0;
+                                facilityTotalCost += bill.total_amount_due || bill.totalAmountDue || 0;
                             }
                         }
                     }
@@ -11046,16 +11046,16 @@
                         if (bills.length > 0) {
                             // Sort bills by period (newest first)
                             bills.sort((a, b) => {
-                                const dateA = a.periodEnd || '';
-                                const dateB = b.periodEnd || '';
+                                const dateA = a.period_end || a.periodEnd || '';
+                                const dateB = b.period_end || b.periodEnd || '';
                                 return dateB.localeCompare(dateA);
                             });
 
                             for (const bill of bills) {
                                 const billId = bill.billId || bill.id;
                                 const periodLabel = bill.periodLabel || formatBillPeriod(bill);
-                                const billKwh = bill.totalKwh || 0;
-                                const billCost = bill.totalAmountDue || 0;
+                                const billKwh = bill.total_kwh || bill.totalKwh || 0;
+                                const billCost = bill.total_amount_due || bill.totalAmountDue || 0;
                                 const billRateValue = billKwh > 0 ? ((billCost / billKwh) * 100) : 0;
                                 const billDays = bill.daysInPeriod || 30;
                                 const billAvgDayValue = billDays > 0 ? (billCost / billDays) : 0;
@@ -11167,8 +11167,8 @@
                             const bill = data;
                             const rawTou = bill.tou || {};
                             const charges = bill.charges || {};
-                            const totalKwh = bill.totalKwh || 0;
-                            const totalCost = bill.totalAmountDue || 0;
+                            const totalKwh = bill.total_kwh || bill.totalKwh || 0;
+                            const totalCost = bill.total_amount_due || bill.totalAmountDue || 0;
                             const days = bill.daysInPeriod || 0;
                             const ratePerKwhCents = totalKwh > 0 ? ((totalCost / totalKwh) * 100).toFixed(2) : '0.00';
                             

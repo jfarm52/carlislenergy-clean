@@ -90,6 +90,21 @@ python main.py
 
 ---
 
+## Configuration: `config.yml` + `.env` (recommended)
+
+This project uses **Option A** configuration:
+
+- **`config.yml`**: non-secret defaults and deploy-safe settings (feature flags, paths, limits)
+- **`.env`**: secrets and per-environment overrides (API keys, DB URL, etc). Not committed.
+
+**Precedence:** environment variables (including those loaded from `.env`) override `config.yml`.
+
+To create a local `.env`, copy the template:
+
+```bash
+cp .env.example .env
+```
+
 ## Key environment variables
 
 ### Core (always useful)
