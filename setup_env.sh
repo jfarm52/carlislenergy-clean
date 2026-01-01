@@ -23,12 +23,12 @@ if [ -f .env ]; then
 fi
 
 # Copy template
-if [ ! -f env.example ]; then
-    echo "❌ Error: env.example not found!"
+if [ ! -f .env.example ]; then
+    echo "❌ Error: .env.example not found!"
     exit 1
 fi
 
-cp env.example .env
+cp .env.example .env
 echo "✅ Created .env file from template"
 echo ""
 echo "📝 Next steps:"

@@ -30,9 +30,9 @@ fi
 # shellcheck disable=SC1091
 source "$ROOT_DIR/.venv/bin/activate"
 
-if [[ ! -f "$ROOT_DIR/.env" ]] && [[ -f "$ROOT_DIR/env.example" ]]; then
-  echo "[start] .env not found; creating from env.example..."
-  cp "$ROOT_DIR/env.example" "$ROOT_DIR/.env"
+if [[ ! -f "$ROOT_DIR/.env" ]] && [[ -f "$ROOT_DIR/.env.example" ]]; then
+  echo "[start] .env not found; creating from .env.example..."
+  cp "$ROOT_DIR/.env.example" "$ROOT_DIR/.env"
 fi
 
 if [[ -f "$ROOT_DIR/requirements.txt" ]]; then

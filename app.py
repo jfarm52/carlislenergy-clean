@@ -108,7 +108,7 @@ try:
         else:
             print(f"[ENV] Found .env at {_dotenv_path}, but no variables were loaded/changed")
     else:
-        print("[ENV] No .env file found (set env vars via shell or create .env from env.example)")
+        print("[ENV] No .env file found (set env vars via shell or create .env from .env.example)")
 except ImportError:
     print("[ENV] python-dotenv not installed - skipping .env file loading")
 except Exception as e:

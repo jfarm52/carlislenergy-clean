@@ -115,7 +115,7 @@ Option 1 (recommended):
 Option 2:
 
 ```bash
-cp env.example .env
+cp .env.example .env
 ```
 
 Then edit `.env` and fill in your credentials.

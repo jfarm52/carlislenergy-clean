@@ -16,7 +16,7 @@ Then edit `.env` and fill in your credentials.
 
 ```bash
 # Copy the template
-cp env.example .env
+cp .env.example .env
 
 # Edit .env with your favorite editor
 nano .env
@@ -109,7 +109,7 @@ The app will print messages on startup:
 
 - ✅ `.env` is already in `.gitignore` - your secrets won't be committed
 - ✅ Never commit `.env` to git
-- ✅ Use `env.example` as a template (it has no real secrets)
+- ✅ Use `.env.example` as a template (it has no real secrets)
 - ✅ Rotate API keys if they're ever exposed
 
 ## Getting API Keys
