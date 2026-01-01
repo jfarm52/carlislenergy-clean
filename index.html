@@ -4409,7 +4409,7 @@
                     </select>
                 </div>
                 <div class="field hidden" id="custom-zone-field"><label for="room-zoneCustom">Custom Zone</label><input type="text" id="room-zoneCustom" name="room-zoneCustom" class="capitalize" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
-                <div class="field"><label for="room-name">Room Name</label><input type="text" id="room-name" name="room-roomname" class="capitalize suggest" list="room-name-options" required autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
+                <div class="field"><label for="room-name">Room Name</label><input type="text" id="room-name" name="room-name" class="capitalize suggest" list="room-name-options" required autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
                 <div class="field"><label for="room-mfg">Manufacturer</label>
                     <select id="room-mfg" name="room-mfg">
                         <option value="">—</option>
@@ -7337,11 +7337,13 @@
                 if (entries && entries.length > 0) {
                     if (siteSection) siteSection.classList.add('hidden');
                     if (dataSection) dataSection.classList.remove('hidden');
+                    setSaveCustomerInfoVisible(false);
                     renderEntries();
                 } else {
                     // Show site section for initial data entry
                     if (siteSection) siteSection.classList.remove('hidden');
                     if (dataSection) dataSection.classList.add('hidden');
+                    setSaveCustomerInfoVisible(true);
                 }
                 
                 // Update header displays
@@ -7411,7 +7413,7 @@
                 const visitDateDisplay = sd.visitDate || formatDateForDisplay(sd.date) || '';
                 
                 // Build card title: Just RoomName
-                const buildCardTitle = (entry, fallback) => entry['room-name'] || fallback;
+                const buildCardTitle = (entry, fallback) => entry['room-name'] || entry['room-roomname'] || fallback;
                 
                 // Build Mfr line
                 const buildMfrHtml = (entry) => {
@@ -10308,6 +10310,7 @@
                 const dataSection = document.getElementById('dataSection');
                 if (siteSection) siteSection.classList.add('hidden');
                 if (dataSection) dataSection.classList.remove('hidden');
+                setSaveCustomerInfoVisible(false);
                 
                 // Show edit site pencil icon
                 const editSiteBtn = document.getElementById('editSiteBtn');
@@ -12375,6 +12378,7 @@
                 // Skip site entry and show data section
                 siteSection.classList.add('hidden');
                 dataSection.classList.remove('hidden');
+                setSaveCustomerInfoVisible(false);
                 
                 // Show edit site pencil icon
                 const editSiteBtn = document.getElementById('editSiteBtn');
@@ -12495,8 +12499,8 @@
             const evaps = entries.filter(e => e.section === 'evap');
             const conds = entries.filter(e => e.section === 'cond');
             return [
-                ...evaps.map((e, i) => ({ key: `evap:${i}`, type: 'evap', index: i, entry: e, name: e['room-name'] || `Evaporator ${i + 1}` })),
-                ...conds.map((e, i) => ({ key: `cond:${i}`, type: 'cond', index: i, entry: e, name: e['room-name'] || `Condenser ${i + 1}` }))
+                ...evaps.map((e, i) => ({ key: `evap:${i}`, type: 'evap', index: i, entry: e, name: e['room-name'] || e['room-roomname'] || `Evaporator ${i + 1}` })),
+                ...conds.map((e, i) => ({ key: `cond:${i}`, type: 'cond', index: i, entry: e, name: e['room-name'] || e['room-roomname'] || `Condenser ${i + 1}` }))
             ];
         }
         
@@ -13029,7 +13033,7 @@
                     if (photo.assignedTo) {
                         const entry = getEntryByRoomKey(photo.assignedTo);
                         if (entry) {
-                            roomName = entry['room-name'] || `Room_${photo.assignedTo}`;
+                            roomName = entry['room-name'] || entry['room-roomname'] || `Room_${photo.assignedTo}`;
                             section = entry.section;
                         }
                     }
@@ -14557,6 +14561,7 @@
             // Switch to data view
             siteSection.classList.add('hidden');
             dataSection.classList.remove('hidden');
+            setSaveCustomerInfoVisible(false);
             const editSiteBtn = document.getElementById('editSiteBtn');
             if (editSiteBtn) {
                 editSiteBtn.classList.remove('hidden');
@@ -14825,6 +14830,7 @@
                     // Skip site entry and show data section
                     siteSection.classList.add('hidden');
                     dataSection.classList.remove('hidden');
+                    setSaveCustomerInfoVisible(false);
                     
                     // Show edit site pencil icon
                     const editSiteBtn = document.getElementById('editSiteBtn');
@@ -15110,6 +15116,17 @@
                 }
                 e.target.value = formatted;
             });
+        }
+
+        // Toggle visibility of the legacy "Save Customer Info" button container
+        function setSaveCustomerInfoVisible(visible) {
+            const el = document.getElementById('bottomSaveContainer');
+            if (!el) return;
+            if (visible) {
+                el.classList.remove('hidden');
+            } else {
+                el.classList.add('hidden');
+            }
         }
 
         // Save Customer Info button - allows saving site details without units
@@ -15578,6 +15595,8 @@
             // hide site section and show data section
             siteSection.classList.add('hidden');
             dataSection.classList.remove('hidden');
+            // Hide the legacy "Save Customer Info" button in data collection view
+            setSaveCustomerInfoVisible(false);
             
             // Show edit site pencil icon
             const editSiteBtnElem = document.getElementById('editSiteBtn');
@@ -15737,6 +15756,8 @@
             // Hide customer info section when editing a room
             const customerInfoView = document.getElementById('customerInfoView');
             if (customerInfoView) customerInfoView.classList.add('hidden');
+            // Hide the legacy "Save Customer Info" button while editing a room
+            setSaveCustomerInfoVisible(false);
             
             // show form
             roomForm.classList.remove('hidden');
@@ -15772,7 +15793,7 @@
                     document.getElementById('custom-zone-field').classList.add('hidden');
                 }
                 
-                document.getElementById('room-name').value = entry['room-name'] || '';
+                document.getElementById('room-name').value = entry['room-name'] || entry['room-roomname'] || '';
                 
                 // Handle manufacturer field - check if value exists in dropdown
                 const mfgValue = entry['room-mfg'] || '';
@@ -16142,6 +16163,12 @@
             formData.forEach((value, key) => {
                 entry[key] = value.trim();
             });
+            // Backward-compat: older builds stored room name under "room-roomname".
+            // Normalize it so edits persist and UI reads the correct key.
+            if (!entry['room-name'] && entry['room-roomname']) {
+                entry['room-name'] = entry['room-roomname'];
+            }
+            delete entry['room-roomname'];
             // assign section and mode from hidden inputs (fall back to current values)
             entry.section = document.getElementById('room-section').value || currentSection;
             entry.mode = document.getElementById('room-mode').value || 'detailed';
@@ -16399,7 +16426,7 @@
                 const roomName = document.createElement('div');
                 roomName.style.fontSize = '1.4rem';
                 roomName.style.fontWeight = 'bold';
-                roomName.textContent = entry['room-name'] || `Unit ${index + 1}`;
+                roomName.textContent = entry['room-name'] || entry['room-roomname'] || `Unit ${index + 1}`;
                 titleSection.appendChild(roomName);
                 
                 // Zone (centered below room name if exists)
@@ -17562,6 +17589,7 @@
                     // hide site section and show data section
                     siteSection.classList.add('hidden');
                     dataSection.classList.remove('hidden');
+                    setSaveCustomerInfoVisible(false);
                     // Show edit site pencil icon
                     const editSiteBtn = document.getElementById('editSiteBtn');
                     if (editSiteBtn) {
@@ -17595,6 +17623,8 @@
                 // Show site section and hide data section
                 siteSection.classList.remove('hidden');
                 dataSection.classList.add('hidden');
+                // Show the legacy "Save Customer Info" button on the site/customer screen
+                setSaveCustomerInfoVisible(true);
                 // Hide edit site pencil icon
                 const editSiteBtn = document.getElementById('editSiteBtn');
                 if (editSiteBtn) {
@@ -17901,6 +17931,7 @@
                 // Switch to data view
                 siteSection.classList.add('hidden');
                 dataSection.classList.remove('hidden');
+                setSaveCustomerInfoVisible(false);
                 // Show edit site pencil icon
                 const editSiteBtn = document.getElementById('editSiteBtn');
                 if (editSiteBtn) {
