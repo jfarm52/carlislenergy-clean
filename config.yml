@@ -1,0 +1,40 @@
+app:
+  env: "development" # development|production
+  secret_key: "change-me" # override via env in production
+  cors:
+    enabled: true
+    # Use env var CORS_ORIGINS (comma-separated) to override in deployments
+    origins: ["*"]
+
+features:
+  utility_bills_enabled: true
+  google_places_enabled: false
+
+storage:
+  projects_file: "projects_data.json"
+  users_file: "users.json"
+  autosave_file: "autosave_data.json"
+  deleted_file: "deleted_projects.json"
+  project_autosaves_file: "project_autosaves.json"
+  deleted_retention_days: 30
+
+bills:
+  uploads_dir: "bill_uploads"
+  # Flask MAX_CONTENT_LENGTH (request size limit) for bill uploads.
+  # Override via env MAX_UPLOAD_MB for deployments.
+  max_upload_mb: 50
+  max_workers: 3
+  cache_version: "v1"
+  normalization:
+    dpi: 200
+
+dropbox:
+  root_path: "/1. CES/1. FRIGITEK/1. FRIGITEK ANALYSIS/SiteWalk Exports"
+  pending_proposals_root: "/1. CES/1. FRIGITEK/1. FRIGITEK ANALYSIS/2. PENDING Proposals"
+
+logging:
+  level: "INFO"
+  # Keep logs single-line friendly for most hosts
+  format: "%(asctime)s %(levelname)s %(name)s %(message)s"
+
+
