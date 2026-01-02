@@ -11,16 +11,18 @@ This repo is intentionally “simple to deploy”: the core SiteWalk data is sto
 ### SiteWalk (core app)
 - **Field-friendly UI** (single-page app in `index.html`) for collecting site/customer info and refrigeration equipment data.
 - **Project management**: create/update/duplicate projects, search/sort, pagination, and a “Recently Deleted” archive.
-- **Autosave** to reduce data loss during field use.
-- **Excel-friendly output** (see `EXCEL_INSTRUCTIONS.md`) and Dropbox export integration.
+- **Autosave** (global and per-project) to reduce data loss during field use.
+- **Excel-friendly output** (see `EXCEL_INSTRUCTIONS.md`) plus CSV import/export helpers.
+- **Print view PDF** generation endpoint (server-side via WeasyPrint).
 
 ### Utility bill intake (optional feature)
-- Upload utility bills (PDF + some image formats) per project.
-- **Async extraction** with progress tracking.
+- Upload utility bills (PDF + common image formats) per project.
+- **Async extraction** with polling endpoints for status/progress.
 - **Two extraction approaches**:
-  - **Text-based pipeline** (`bills/`): normalize → OCR fallback → clean → LLM parse → cache
-  - **Vision-based legacy extractor** (`bill_extractor.py`): PDF/images → LLM vision extraction
+  - **Text-based pipeline (default)**: `/process?...method=text` (uses `bills/` + job queue)
+  - **Vision-based legacy extractor**: `/process?...method=vision` (uses `bill_extractor.py`)
 - Review/correct extracted data; corrections can be saved for future “training hints.”
+- Grouped and detailed bill views, plus CSV export for downstream import.
 
 ---
 
@@ -31,18 +33,23 @@ This repo is intentionally “simple to deploy”: the core SiteWalk data is sto
 - The SPA calls backend endpoints under `/api/*`.
 
 ### Backend (Flask)
-- `app.py` is the main server: serves the SPA and exposes JSON APIs.
-- `main.py` runs the server locally (port 5000).
+- `app.py` creates the Flask app and registers blueprints in `routes/`.
+- `main.py` runs the server locally.
+- Convenience scripts:
+  - `./start.sh` (background start, logs to `.run/app.log`, default port **5001**)
+  - `./stop.sh`
 
 ### Storage
 - **Projects (SiteWalk)**: stored as JSON files on disk:
   - `projects_data.json` (projects by user bucket)
-  - `users.json` (very lightweight users/roles; no real auth)
+  - `users.json` (lightweight users/roles; no real auth)
   - `deleted_projects.json` (Recently Deleted archive; 30-day retention)
-  - `autosave_data.json` (autosave snapshots)
+  - `autosave_data.json` (per-user autosave)
+  - `project_autosaves.json` (per-project autosave)
 - **Bills (Bill Intake)**:
   - Files saved on disk in `bill_uploads/`
-  - Metadata + extracted data stored in Postgres via `bills_db.py`
+  - Bill metadata + extracted data stored in Postgres via `bills_db.py`
+  - Optional annotation uploads stored in `bill_screenshots/`
 
 ---
 
@@ -52,10 +59,11 @@ This repo is intentionally “simple to deploy”: the core SiteWalk data is sto
 - Python **3.11+**
 - Recommended: a virtualenv
 - Optional (only if using bill intake): a running PostgreSQL database
-- Optional (only if using OCR): a working **Tesseract** installation on your machine
+- Optional (only if using OCR): a working **Tesseract** install
+- Optional (only if generating PDFs): WeasyPrint system deps (platform-specific)
 
 ### Install
-Use either `requirements.txt` or `pyproject.toml` dependencies. The simplest path:
+For full functionality, use `requirements.txt` (the `pyproject.toml` dependency list is minimal):
 
 ```bash
 python -m venv .venv
@@ -63,52 +71,77 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Run
-
+### Run (simple)
 ```bash
 python main.py
 ```
+
+- Defaults: `HOST=0.0.0.0`, `PORT=5000` (override via env vars)
 
 Then open `http://localhost:5000`.
 
-### Local Dev (with Google Places API)
-
-To use Google Places features (business search, address autocomplete), set the API key when starting the server:
-
+### Run (scripted)
 ```bash
-GOOGLE_PLACES_API_KEY=your_key_here python main.py
+./start.sh
 ```
 
-Or export it in your shell session:
+- Defaults: `PORT=5001`
+- Logs: `.run/app.log`
+
+Stop with:
 
 ```bash
-export GOOGLE_PLACES_API_KEY=your_key_here
-python main.py
+./stop.sh
 ```
-
-**Note:** The app will work without the API key, but Google Places features (like "Show Businesses Nearby") will return an error message instead of results.
 
 ---
 
-## Key environment variables
+## Configuration: `config.yml` + environment variables
 
-### Core (always useful)
-- **`UTILITY_BILLS_ENABLED`**: `"true"`/`"false"` (defaults to true in code)
+- **`config.yml`**: non-secret defaults and deploy-safe settings (feature flags, paths, limits)
+- **Environment variables / `.env`**: secrets and per-environment overrides (API keys, DB URL, etc)
 
-### Bill intake / extraction (Postgres + xAI)
-- **`DATABASE_URL`**: Postgres connection string (required if bills feature is enabled and used)
-- **`XAI_API_KEY`**: xAI key used via OpenAI-compatible client (required for extraction)
+**Precedence:** environment variables override `config.yml`.
 
-### Dropbox export (optional)
-Used for exporting CSVs and creating proposal folder structures:
-- **`DROPBOX_APP_KEY`**
-- **`DROPBOX_APP_SECRET`**
-- **`DROPBOX_REFRESH_TOKEN`**
-Fallbacks exist in code for a static token (`DROPBOX_ACCESS_TOKEN`), but refresh-token auth is preferred.
+The backend will load a `.env` file if present (via `python-dotenv`).
 
-### Google Places (optional)
-Used for business search/address autocomplete/geocoding:
-- **`GOOGLE_PLACES_API_KEY`**
+### Create a local `.env`
+Option 1 (recommended):
+
+```bash
+./setup_env.sh
+```
+
+Option 2:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and fill in your credentials.
+
+### Suggested `.env` template (create a file named `.env`)
+```bash
+# Feature flags
+UTILITY_BILLS_ENABLED=true
+
+# Bill intake (required if bills enabled + used)
+DATABASE_URL=postgresql://user:password@host:5432/dbname
+XAI_API_KEY=your_key_here
+
+# Optional integrations
+GOOGLE_PLACES_API_KEY=your_key_here
+DROPBOX_APP_KEY=your_key_here
+DROPBOX_APP_SECRET=your_key_here
+DROPBOX_REFRESH_TOKEN=your_refresh_token_here
+
+# Optional overrides
+MAX_UPLOAD_MB=50
+BILL_UPLOADS_DIR=bill_uploads
+CORS_ORIGINS=http://localhost:5000
+LOG_LEVEL=INFO
+APP_CONFIG_PATH=config.yml
+```
 
 ---
 
@@ -116,44 +149,104 @@ Used for business search/address autocomplete/geocoding:
 
 ### SPA + health
 - `GET /` → serves `index.html`
-- `GET /health` → health check
+- `GET /health` → health check (does not depend on DB)
+
+### Configuration / feature flags
+- `GET /api/config` → `{ billsEnabled, googlePlacesEnabled }`
 
 ### Projects (SiteWalk)
-- `POST /api/data` → create/update a project (expects “create action” + idempotency headers)
-- `GET /api/data?project=<id>` → fetch a project
-- `GET /api/projects` → list project summaries (paginated)
+- `GET /api/projects` → list project summaries (paginated via `limit`/`offset`)
+- `GET /api/projects/<project_id>` → fetch a project
+- `PUT /api/projects/<project_id>` → update a project
+- `POST /api/projects/create` → create an empty project (simple API-friendly create)
+- `POST /api/projects/<project_id>/duplicate` (or `/api/projects/duplicate/<project_id>`) → duplicate project (attempts to clone bill data too)
+- `POST /api/import-csv` → import a project from a CSV exported by the app
 - `DELETE /api/data/<project_id>` → soft-delete (moves to Recently Deleted)
 
+**Legacy / UI-specific endpoint**
+- `POST /api/data` → used by the SPA; **requires headers**:
+  - `X-Client-Action`: `create_new` | `duplicate` | `import`
+  - `Idempotency-Key`: required
+  - `X-Client-Version`: must match server build ID (currently `2025-12-17-v1`) or returns `409 BUILD_MISMATCH`
+
+### Recently Deleted
+- `GET /api/deleted-projects`
+- `POST /api/deleted-projects/<project_id>/restore`
+- `DELETE /api/deleted-projects/<project_id>` (permanent delete)
+- `POST /api/deleted-projects/bulk-restore`
+- `POST /api/deleted-projects/bulk-delete`
+
+### Autosave
+- `GET|POST|DELETE /api/autosave` (per-user)
+- `GET|POST|DELETE /api/projects/<project_id>/autosave` (per-project)
+- `GET /api/autosaves` (list autosaves for user)
+
+### Print view PDF
+- `GET /api/projects/<project_id>/print.pdf` → generates a PDF (attachment)
+
 ### Bills (per project)
-- `GET /api/projects/<project_id>/bills` → bill files + reads + summary
-- `POST /api/projects/<project_id>/bills/upload` → upload file (stores record, does not extract)
-- `POST /api/projects/<project_id>/bills/process/<file_id>` → trigger extraction (async)
+- `GET /api/bills/enabled`
+- `GET /api/projects/<project_id>/bills` → files + reads + summary
+- `POST /api/projects/<project_id>/bills/upload` → upload a file (SHA-256 duplicate detection)
+- `POST /api/projects/<project_id>/bills/process/<file_id>?method=text|vision` → trigger extraction (async; default `text`)
+- `GET /api/projects/<project_id>/bills/status` → per-file polling status
+- `GET /api/projects/<project_id>/bills/job-status` → aggregated counts for progress bars
+- `GET /api/bills/file/<file_id>/progress` → legacy progress endpoint
+- `GET /api/bills/status/<file_id>` → granular job queue status
+- `DELETE /api/projects/<project_id>/bills/files/<file_id>` → delete a bill file
+- `GET /api/projects/<project_id>/bills/grouped` → grouped accounts/meters view
+- `GET /api/projects/<project_id>/bills/detailed` → detailed extraction payloads
+- `GET /api/projects/<project_id>/bills/files/<file_id>/review` → file + extraction payload
+- `PUT /api/projects/<project_id>/bills/files/<file_id>/update` → update extraction payload
+- `POST /api/projects/<project_id>/bills/files/<file_id>/approve` → approve and upsert data
+- `POST /api/projects/<project_id>/bills/files/<file_id>/corrections` → save corrections/training hints
+- `GET /api/bills/training/<utility_name>` → fetch training hints
+- `GET /api/bills/file/<file_id>/pdf` → serve original PDF
+- `GET /api/bills/file/<file_id>/bills` → bills created from that file
+- `GET /api/bills/<bill_id>/review` → bill review payload
+- `PATCH /api/bills/<bill_id>` → update bill fields
+- `PATCH /api/bills/<bill_id>/manual-fix` → update + mark parent file OK
+- `POST /api/projects/<source_project_id>/bills/copy-to/<target_project_id>` → copy bill data between projects
+- Analytics/export:
+  - `GET /api/projects/<project_id>/bills/summary`
+  - `GET /api/accounts/<account_id>/summary`
+  - `GET /api/meters/<meter_id>/bills`
+  - `GET /api/accounts/<account_id>/meters/<meter_id>/months`
+  - `GET /api/bills/<bill_id>/detail`
+  - `GET /api/projects/<project_id>/bills/export-csv`
+
+### Dropbox export (optional)
+- `POST /api/upload_csv_to_dropbox` → upload a CSV payload to Dropbox (uses `services/dropbox_service.py`)
+- Additional legacy Dropbox/export endpoints live in `backend_upload_to_dropbox.py`.
+
+### Google Places (optional)
+- `GET /api/place-autocomplete`
+- `GET /api/place-details`
+- `GET /api/nearby-businesses`
+- `GET /api/geocode`
 
 ---
 
 ## Where to look in the code
 
 ### Core app
-- `app.py`: Flask server, project CRUD, “Recently Deleted”, autosave, Google Places proxy endpoints
-- `index.html`: entire SPA UI and client-side logic
-
-### Dropbox export
-- `backend_upload_to_dropbox.py`: Flask blueprint for uploads/exports and folder creation
+- `app.py`: Flask app factory + blueprint registration + response-size limiter + `.env` loading
+- `routes/`: API blueprints (projects, bills, autosave, deleted projects, config, etc.)
+- `stores/project_store.py`: JSON file storage (projects/users/deleted/autosaves)
 
 ### Bills system
-- `bills_db.py`: Postgres schema + DB access for bill files, accounts/meters, normalized bills, training data, screenshots, cache
-- `bills/normalizer.py`: PDF text extraction + OCR fallback + spreadsheet parsing
-- `bills/text_cleaner.py`: reduce/clean text for cost-effective LLM parsing
-- `bills/parser.py`: two-pass LLM text parser
-- `bills/cache.py`: content-addressed cache (hash of normalized text)
-- `bill_extractor.py`: legacy vision-based extractor (PDF/images → vision model)
+- `bills_db.py`: Postgres schema + DB access for bill files, normalized bills, training data, screenshots, exports
+- `bills/`: text-based pipeline (normalize/clean/parse/cache/job queue)
+- `bill_extractor.py`: legacy vision extractor + shared extraction helpers
 
 ---
 
 ## Notes / gotchas
 - **Auth model**: there is no real authentication; projects are bucketed by `X-User-Id` header and default to a shared `default` admin user.
-- **Concurrency**: project storage is file-based JSON and not designed for high-concurrency multi-user workloads.
-- **Large payload protections**: `app.py` includes response-size blocking and “safe print” truncation to prevent crashes in constrained environments.
+- **/api/data POST is strict**: requires `Idempotency-Key`, allowed `X-Client-Action`, and enforces a build ID match (`X-Client-Version`).
+- **Bills DB is lazy-initialized**: bills tables are created on first bills request (so `/health` stays fast even if DB is down).
+- **Large payload protections**: JSON responses over a size limit are blocked to prevent crashes in constrained hosts.
+- **Replit deployment redirect**: if `REPLIT_DEPLOYMENT` is set, requests may be redirected to a custom domain.
 
 ---
 
