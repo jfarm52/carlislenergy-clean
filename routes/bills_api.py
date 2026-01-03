@@ -276,9 +276,28 @@ def upload_bill_file(project_id):
     """Upload a bill PDF file for a project. Does NOT trigger extraction - use /process endpoint."""
     import hashlib
     from werkzeug.utils import secure_filename
+    from bill_intake.db.connection import get_connection
     
     if not BILLS_FEATURE_ENABLED:
         return jsonify({'error': 'Bills feature is disabled'}), 403
+
+    # Ensure the bills DB is configured/initialized; otherwise return a clear, actionable error.
+    # Without DATABASE_URL, downstream DB calls will raise and the UI will look like uploads "reset".
+    try:
+        # Validate DB connectivity early so the frontend gets a clean error instead of a silent reset.
+        conn = get_connection()
+        conn.close()
+
+        if not ensure_bills_db_initialized():
+            return jsonify({
+                'success': False,
+                'error': 'Bills database could not be initialized. Check DATABASE_URL and database connectivity.'
+            }), 503
+    except Exception:
+        return jsonify({
+            'success': False,
+            'error': 'Bills database is not configured/reachable. Set DATABASE_URL (PostgreSQL) and ensure the database is running.'
+        }), 503
     
     if 'file' not in request.files:
         return jsonify({'success': False, 'error': 'No file uploaded'}), 400
@@ -361,6 +380,12 @@ def upload_bill_file(project_id):
         }), 201
         
     except Exception as e:
+        # Make missing DB configuration an actionable (503) error instead of a generic 500.
+        if "DATABASE_URL not configured" in str(e):
+            return jsonify({
+                'success': False,
+                'error': 'Bills database is not configured. Set DATABASE_URL (PostgreSQL) to enable utility bills.'
+            }), 503
         print(f"[bills] Error uploading file: {e}")
         import traceback
         traceback.print_exc()

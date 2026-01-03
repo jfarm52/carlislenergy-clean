@@ -1733,40 +1733,114 @@
         /* TODO: set hero background image from client assets */
         .home-view {
             min-height: 100dvh;
-            background: linear-gradient(135deg, #1e5a99 0%, #2d7bb8 50%, #5ca3d6 100%);
-            padding: 2rem 12px;
+            /* Brand canvas: blue gradient, but “sexier” via layered glows (keeps readability) */
+            background: linear-gradient(135deg, #0b1f3a 0%, #1e5a99 35%, #2d7bb8 70%, #6fd0ff 100%);
+            position: relative;
+            isolation: isolate;
+            padding: 2.25rem 12px;
             max-width: 100%;
             overflow-x: hidden;
             box-sizing: border-box;
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        }
+
+        .home-view::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            /* “Mesh” feel using a few radial gradients */
+            background:
+                radial-gradient(900px circle at 12% 10%, rgba(255,255,255,0.18), transparent 62%),
+                radial-gradient(750px circle at 88% 22%, rgba(111,208,255,0.28), transparent 60%),
+                radial-gradient(900px circle at 55% 105%, rgba(45,123,184,0.40), transparent 62%);
+            mix-blend-mode: screen;
+            opacity: 0.9;
+        }
+
+        .home-view::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            /* Gentle darkening so white text + controls stay readable on bright cyan */
+            background: linear-gradient(to bottom, rgba(0,0,0,0.08), rgba(0,0,0,0.35));
+            opacity: 1;
         }
         
         .home-hero {
             text-align: center;
             color: #fff;
-            padding: 2rem 1rem;
-            max-width: 600px;
+            padding: 2.25rem 1.25rem 1.5rem 1.25rem;
+            max-width: 720px;
             margin: 0 auto;
             box-sizing: border-box;
+            position: relative;
+            z-index: 1;
+            border-radius: 20px;
+            background: rgba(10, 26, 52, 0.32);
+            border: 1px solid rgba(255,255,255,0.18);
+            box-shadow: 0 26px 70px rgba(0,0,0,0.35);
+            backdrop-filter: blur(10px);
+        }
+
+        .home-hero::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            pointer-events: none;
+            /* subtle inner highlight so the panel feels less “flat” */
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
         }
         
         .home-logo {
             max-width: 100%;
-            max-height: 100px;
+            max-height: 160px;
             height: auto;
             display: block;
-            margin: 0 auto 1rem auto;
+            margin: 0 auto 1.25rem auto;
+            /* Subtle frosted plate so the dark wordmark stays readable, without feeling “white-boxy” */
+            background: linear-gradient(135deg, rgba(255,255,255,0.30), rgba(255,255,255,0.12));
+            border: 1px solid rgba(255,255,255,0.22);
+            padding: 12px 16px;
+            border-radius: 18px;
+            box-shadow: 0 22px 55px rgba(0,0,0,0.26);
+            filter: drop-shadow(0 10px 18px rgba(0,0,0,0.18));
         }
         
         .home-title {
-            font-size: 1.8rem;
-            margin: 0 0 0.5rem 0;
-            font-weight: bold;
+            font-size: 2.05rem;
+            margin: 0 0 0.65rem 0;
+            font-weight: 750;
+            letter-spacing: -0.02em;
+            text-shadow: 0 10px 26px rgba(0,0,0,0.35);
         }
         
         .home-subtitle {
-            font-size: 1.1rem;
+            /* Eyebrow label (not button-like) */
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            margin: 0 0 1.6rem 0;
+            padding: 0;
+            border-radius: 0;
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            color: rgba(255,255,255,0.82);
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+        }
+
+        .home-subtitle::before,
+        .home-subtitle::after {
+            content: "";
+            height: 1px;
+            width: 28px;
+            background: linear-gradient(90deg, rgba(111,208,255,0.0), rgba(111,208,255,0.75), rgba(111,208,255,0.0));
             opacity: 0.9;
-            margin: 0 0 2rem 0;
         }
         
         .home-cta-buttons {
@@ -1777,46 +1851,86 @@
         }
         
         .home-cta-btn {
-            padding: 1.25rem 2rem;
-            font-size: 1.2rem;
-            border: none;
-            border-radius: 8px;
+            padding: 1.15rem 1.75rem;
+            font-size: 1.15rem;
+            border: 1px solid transparent;
+            border-radius: 14px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 0.75rem;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease, background 0.18s ease;
+            box-shadow: 0 10px 26px rgba(0,0,0,0.22);
+            font-weight: 650;
         }
         
         .home-cta-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            box-shadow: 0 16px 40px rgba(0,0,0,0.28);
+            filter: saturate(1.05);
+        }
+
+        .home-cta-btn:active {
+            transform: translateY(0px) scale(0.99);
+            box-shadow: 0 10px 26px rgba(0,0,0,0.22);
         }
         
         .home-cta-btn.primary {
-            background: #fff;
-            color: #1e5a99;
-            font-weight: bold;
+            background: linear-gradient(135deg, #6fd0ff 0%, #2d7bb8 45%, #1e5a99 100%);
+            color: #fff;
+            font-weight: 750;
+            border-color: rgba(255,255,255,0.18);
+            text-shadow: 0 10px 22px rgba(0,0,0,0.25);
+            background-size: 180% 180%;
+            animation: homeGradientShift 8s ease-in-out infinite;
+        }
+
+        @keyframes homeGradientShift {
+            0%   { background-position: 0% 50%; }
+            50%  { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
         }
         
         .home-cta-btn.secondary {
-            background: rgba(255,255,255,0.2);
-            color: #fff;
-            border: 2px solid rgba(255,255,255,0.5);
+            /* Secondary: same shape + depth, softer gradient (still clearly clickable) */
+            background: linear-gradient(135deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.10) 100%);
+            color: rgba(255,255,255,0.95);
+            border: 1px solid rgba(255,255,255,0.30);
+            box-shadow: 0 10px 26px rgba(0,0,0,0.18);
         }
         
         .home-cta-btn.tertiary {
-            background: transparent;
-            color: rgba(255,255,255,0.85);
-            border: 1px solid rgba(255,255,255,0.4);
-            font-size: 0.95rem;
-            padding: 0.75rem 1.5rem;
+            /* Tertiary: still a “real button” (not a naked link), but clearly lowest priority */
+            background: rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.90);
+            border: 1px solid rgba(255,255,255,0.26);
+            font-size: 1.0rem;
+            padding: 0.95rem 1.5rem;
+            border-radius: 14px;
+            box-shadow: 0 8px 22px rgba(0,0,0,0.12);
         }
         
         .home-cta-btn.tertiary:hover {
             background: rgba(255,255,255,0.1);
             border-color: rgba(255,255,255,0.6);
+        }
+
+        @media (max-width: 480px) {
+            .home-hero {
+                padding: 1.75rem 1rem 1.25rem 1rem;
+                border-radius: 16px;
+            }
+            .home-logo {
+                max-height: 120px;
+            }
+            .home-title {
+                font-size: 1.75rem;
+            }
+            .home-cta-btn {
+                padding: 1.05rem 1.25rem;
+                border-radius: 12px;
+            }
         }
         
         /* Bills page styles */
@@ -3638,11 +3752,19 @@
         }
         
         .home-recent-section {
-            background: rgba(255,255,255,0.95);
-            border-radius: 12px;
+            position: relative;
+            overflow: hidden;
+            background: rgba(255,255,255,0.92);
+            border-radius: 16px;
             padding: 1.25rem;
             max-width: 600px;
             margin: 0 auto;
+            /* Intentional “brand frame” via gradient border (not a random stripe) */
+            border: 1px solid transparent;
+            background:
+                linear-gradient(rgba(255,255,255,0.92), rgba(255,255,255,0.92)) padding-box,
+                linear-gradient(90deg, rgba(111,208,255,0.95), rgba(45,123,184,0.95), rgba(30,90,153,0.95)) border-box;
+            box-shadow: 0 18px 55px rgba(0,0,0,0.22);
         }
         
         .home-recent-header {
@@ -3666,14 +3788,15 @@
             align-items: center;
             justify-content: space-between;
             padding: 0.75rem;
-            background: #f8f9fa;
-            border-radius: 6px;
+            background: rgba(255,255,255,0.75);
+            border-radius: 12px;
             cursor: pointer;
             transition: background 0.2s;
+            border: 1px solid rgba(30,90,153,0.10);
         }
         
         .home-recent-item:hover {
-            background: #e9ecef;
+            background: rgba(235, 247, 255, 0.92);
         }
         
         .home-recent-info {
@@ -3695,15 +3818,16 @@
         }
         
         .home-recent-open {
-            background: #2d7bb8;
+            background: linear-gradient(135deg, #2d7bb8 0%, #1e5a99 100%);
             color: #fff;
             border: none;
-            border-radius: 4px;
+            border-radius: 10px;
             padding: 0.4rem 0.75rem;
             font-size: 0.85rem;
             cursor: pointer;
             flex-shrink: 0;
             margin-left: 0.5rem;
+            box-shadow: 0 10px 20px rgba(30,90,153,0.22);
         }
         
         .home-recent-empty {
@@ -3926,10 +4050,6 @@
         }
         
         /* ==================== CURRENT PROJECT VIEW ==================== */
-        .current-project-view {
-            /* Container for equipment data entry */
-        }
-        
         /* Responsive centered card grid for Current Project view */
         .cards-container {
             max-width: 1400px;
@@ -11511,17 +11631,31 @@
                         method: 'POST',
                         body: formData
                     });
-                    
-                    if (response.ok) {
-                        uploaded++;
-                        const result = await response.json();
-                        if (result.file && result.file.id) {
-                            // Only queue for processing if not a duplicate
-                            if (!result.is_duplicate) {
-                                uploadedFileIds.push(result.file.id);
-                            } else {
-                                console.log(`[embeddedBills] Skipping duplicate file: ${file.name}`);
-                            }
+
+                    // Always attempt to parse response so we can show actionable errors
+                    let result = null;
+                    try {
+                        result = await response.json();
+                    } catch (e) {
+                        const txt = await response.text().catch(() => '');
+                        result = { success: false, error: txt || 'Upload failed (non-JSON response)' };
+                    }
+
+                    if (!response.ok || !result || result.success === false) {
+                        const msg = (result && result.error) ? result.error : `Upload failed (${response.status})`;
+                        console.error('[embeddedBills] Upload failed:', file.name, msg);
+                        if (statusEl) statusEl.innerHTML = `<span style="color:#dc3545;">✗ ${msg}</span>`;
+                        showToast(msg, 'error');
+                        continue;
+                    }
+
+                    uploaded++;
+                    if (result.file && result.file.id) {
+                        // Only queue for processing if not a duplicate
+                        if (!result.is_duplicate) {
+                            uploadedFileIds.push(result.file.id);
+                        } else {
+                            console.log(`[embeddedBills] Skipping duplicate file: ${file.name}`);
                         }
                     }
                     
@@ -11533,7 +11667,17 @@
                     console.error('[embeddedBills] Upload error:', err);
                 }
             }
-            
+
+            if (uploaded === 0) {
+                // Avoid flashing "analyzing 0 files" then re-rendering back to the upload button
+                if (statusEl) statusEl.innerHTML = '';
+                if (progressText) progressText.textContent = '';
+                setTimeout(() => {
+                    if (progressContainer) progressContainer.style.display = 'none';
+                }, 800);
+                return;
+            }
+
             if (statusEl) statusEl.innerHTML = `<span style="color: #28a745;">✓ ${uploaded} file(s) uploaded. Starting extraction...</span>`;
             
             // Trigger processing for each uploaded file
@@ -18299,6 +18443,13 @@
         // ===== GOOGLE PLACES AUTOCOMPLETE FEATURE =====
         // Debounce timer for autocomplete requests
         let autocompleteTimers = {};
+        let lastPlacesConfigToastAt = 0;
+        function maybeShowPlacesConfigToast(message) {
+            const now = Date.now();
+            if (now - lastPlacesConfigToastAt < 10000) return; // throttle
+            lastPlacesConfigToastAt = now;
+            showToast(message, 'warning');
+        }
         
         function setupAutocomplete(inputId, dropdownId) {
             const input = document.getElementById(inputId);
@@ -18330,7 +18481,16 @@
                         }
                         
                         const response = await fetch(url);
-                        if (!response.ok) throw new Error('API error');
+                        if (!response.ok) {
+                            // Try to surface the backend error (e.g., missing GOOGLE_PLACES_API_KEY)
+                            try {
+                                const data = await response.json();
+                                if (data && data.error) {
+                                    maybeShowPlacesConfigToast(data.error);
+                                }
+                            } catch (e) {}
+                            throw new Error('API error');
+                        }
                         
                         const results = await response.json();
                         

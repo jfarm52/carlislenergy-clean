@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: carlisle_postgres
+    environment:
+      POSTGRES_USER: carlisle
+      POSTGRES_PASSWORD: carlisle
+      POSTGRES_DB: carlisle_bills
+    ports:
+      - "5432:5432"
+    volumes:
+      - carlisle_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U carlisle -d carlisle_bills"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  carlisle_pgdata:
+
+

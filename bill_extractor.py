@@ -6,22 +6,23 @@ Supports SCE, LADWP, and other utility bills with detailed TOU breakdown
 import os
 import json
 import base64
+import requests
 try:
     import pymupdf as fitz  # PyMuPDF 1.26+
 except ImportError:
     import fitz  # PyMuPDF legacy
-from openai import OpenAI
 
 XAI_API_KEY = os.environ.get("XAI_API_KEY")
+XAI_BASE_URL = "https://api.x.ai/v1"
 
-def get_xai_client():
-    """Get xAI client instance using OpenAI-compatible API"""
+def _xai_chat_completions(payload: dict, timeout_s: int = 180) -> dict:
+    """Call xAI OpenAI-compatible REST API without importing the OpenAI SDK."""
     if not XAI_API_KEY:
         raise ValueError("XAI_API_KEY environment variable not set")
-    return OpenAI(
-        api_key=XAI_API_KEY,
-        base_url="https://api.x.ai/v1"
-    )
+    headers = {"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"}
+    resp = requests.post(f"{XAI_BASE_URL}/chat/completions", json=payload, headers=headers, timeout=timeout_s)
+    resp.raise_for_status()
+    return resp.json()
 
 def pdf_to_images(file_path, max_pages=10):
     """Convert PDF pages to base64-encoded images for vision API"""
@@ -156,8 +157,6 @@ def extract_bill_data(file_path, progress_callback=None, training_hints=None, an
     notify_progress(0.3, "File converted to images")
     
     try:
-        client = get_xai_client()
-        
         training_hints_text = ""
         if training_hints and len(training_hints) > 0:
             hints_list = []
@@ -360,9 +359,9 @@ Use null for any field you cannot confidently extract. Amounts should be numbers
         import time
         start_time = time.time()
         
-        response = client.chat.completions.create(
-            model="grok-4",
-            messages=[
+        response = _xai_chat_completions({
+            "model": "grok-4",
+            "messages": [
                 {
                     "role": "system",
                     "content": "You are an expert commercial electric-bill parser. You MUST respond with STRICT valid JSON only. No explanations, no markdown, no prose."
@@ -372,13 +371,13 @@ Use null for any field you cannot confidently extract. Amounts should be numbers
                     "content": content
                 }
             ],
-            temperature=0
-        )
+            "temperature": 0
+        })
         
         end_time = time.time()
         elapsed = end_time - start_time
         
-        result_text = response.choices[0].message.content
+        result_text = (response.get("choices", [{}])[0].get("message", {}) or {}).get("content", "")
         print(f"[bill_extractor] Grok 4 API call took {elapsed:.2f} seconds")
         print(f"[bill_extractor] Got response from Grok 4: {result_text[:500]}...")
         

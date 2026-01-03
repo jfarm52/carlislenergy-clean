@@ -150,6 +150,13 @@ createdb carlisle_bills
 # DATABASE_URL=postgresql://$(whoami)@localhost:5432/carlisle_bills
 ```
 
+**Option 2: Docker (recommended for dev)**
+```bash
+docker compose up -d
+```
+Then set `DATABASE_URL` in `local.env` (recommended) or `.env`:
+`postgresql://carlisle:carlisle@localhost:5432/carlisle_bills`
+
 **Option 2: Cloud Database**
 - Use services like Supabase, Neon, or Railway
 - They provide connection strings in the format:

@@ -100,6 +100,26 @@ import logging
 # NOTE: load_dotenv() returns False when no .env is found; log accurately to reduce confusion.
 try:
     from dotenv import load_dotenv, find_dotenv
+    from pathlib import Path
+
+    # Support a non-committed local env file for developer machines.
+    # This avoids putting secrets into tracked files while still enabling features.
+    _cwd = Path.cwd()
+    _local_env_candidates = [
+        _cwd / "local.env",
+        _cwd / ".env.local",
+    ]
+    for _p in _local_env_candidates:
+        try:
+            if _p.exists():
+                _loaded_local = load_dotenv(dotenv_path=str(_p), override=False)
+                if _loaded_local:
+                    print(f"[ENV] Loaded environment variables from {_p.name} ({_p})")
+                else:
+                    print(f"[ENV] Found {_p.name} at {_p}, but no variables were loaded/changed")
+        except Exception as _e:
+            print(f"[ENV] Warning: Could not load {_p.name}: {_e}")
+
     _dotenv_path = find_dotenv(usecwd=True)
     if _dotenv_path:
         _loaded = load_dotenv(dotenv_path=_dotenv_path, override=False)

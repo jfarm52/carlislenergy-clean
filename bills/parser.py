@@ -11,11 +11,12 @@ import time
 from typing import Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 
-from openai import OpenAI
+import requests
 
 logger = logging.getLogger(__name__)
 
 XAI_API_KEY = os.environ.get("XAI_API_KEY")
+XAI_BASE_URL = "https://api.x.ai/v1"
 
 REQUIRED_FIELDS = ['account_number', 'billing_period', 'total_kwh', 'total_charges']
 
@@ -87,16 +88,9 @@ class TwoPassParser:
         """Initialize the parser."""
         self.client = None
     
-    def _get_client(self) -> OpenAI:
-        """Get or create xAI client."""
-        if self.client is None:
-            if not XAI_API_KEY:
-                raise ValueError("XAI_API_KEY environment variable not set")
-            self.client = OpenAI(
-                api_key=XAI_API_KEY,
-                base_url="https://api.x.ai/v1"
-            )
-        return self.client
+    def _get_client(self):
+        """Deprecated: legacy OpenAI SDK client accessor retained for compatibility."""
+        return None
     
     def parse(self, cleaned_text: str, evidence_lines: list = None) -> ParseResult:
         """
@@ -279,11 +273,12 @@ JSON:"""
         tokens_out = 0
         
         try:
-            client = self._get_client()
-            
-            response = client.chat.completions.create(
-                model=self.MODEL,
-                messages=[
+            if not XAI_API_KEY:
+                raise ValueError("XAI_API_KEY environment variable not set")
+
+            payload = {
+                "model": self.MODEL,
+                "messages": [
                     {
                         "role": "system",
                         "content": "You are a utility bill parser. Return only valid JSON, no markdown or explanation."
@@ -293,15 +288,21 @@ JSON:"""
                         "content": prompt
                     }
                 ],
-                max_tokens=max_tokens,
-                temperature=0.0
-            )
-            
-            if hasattr(response, 'usage') and response.usage:
-                tokens_in = response.usage.prompt_tokens or 0
-                tokens_out = response.usage.completion_tokens or 0
-            
-            content = response.choices[0].message.content.strip()
+                "max_tokens": max_tokens,
+                "temperature": 0.0
+            }
+            headers = {"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"}
+
+            r = requests.post(f"{XAI_BASE_URL}/chat/completions", json=payload, headers=headers, timeout=120)
+            r.raise_for_status()
+            resp = r.json()
+
+            usage = resp.get("usage") or {}
+            tokens_in = usage.get("prompt_tokens") or 0
+            tokens_out = usage.get("completion_tokens") or 0
+
+            content = (resp.get("choices", [{}])[0].get("message", {}) or {}).get("content", "")
+            content = content.strip()
             
             if content.startswith("```"):
                 lines = content.split('\n')

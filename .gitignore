@@ -6,6 +6,7 @@ __pycache__/
 .Python
 .pythonlibs/
 .uv/
+.pytest_cache/
 
 # Data files
 projects_data.json
@@ -27,6 +28,8 @@ Thumbs.db
 
 # Environment
 .env
+.env.local
+local.env
 .venv
 env/
 venv/
