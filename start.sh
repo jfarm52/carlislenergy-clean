@@ -12,6 +12,22 @@ mkdir -p "$RUN_DIR"
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+  else
+    echo "[start] ERROR: No Python found. Install Python 3.11+ and re-run."
+    exit 127
+  fi
+fi
+
+if [[ -d "$ROOT_DIR/.venv" ]] && [[ ! -x "$ROOT_DIR/.venv/bin/python" ]]; then
+  echo "[start] .venv exists but is broken (missing .venv/bin/python); recreating it..."
+  rm -rf "$ROOT_DIR/.venv"
+fi
+
 if [[ ! -d "$ROOT_DIR/.venv" ]]; then
   echo "[start] .venv not found; creating it..."
   "$PYTHON_BIN" -m venv "$ROOT_DIR/.venv"
@@ -30,15 +46,25 @@ fi
 # shellcheck disable=SC1091
 source "$ROOT_DIR/.venv/bin/activate"
 
+VENV_PY="$ROOT_DIR/.venv/bin/python"
+
 if [[ ! -f "$ROOT_DIR/.env" ]] && [[ -f "$ROOT_DIR/.env.example" ]]; then
   echo "[start] .env not found; creating from .env.example..."
   cp "$ROOT_DIR/.env.example" "$ROOT_DIR/.env"
 fi
 
+# Load environment variables from .env (if present)
+if [[ -f "$ROOT_DIR/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/.env"
+  set +a
+fi
+
 if [[ -f "$ROOT_DIR/requirements.txt" ]]; then
   echo "[start] Ensuring dependencies are installed..."
-  python -m pip install --upgrade pip >/dev/null 2>&1 || true
-  python -m pip install -r "$ROOT_DIR/requirements.txt"
+  "$VENV_PY" -m pip install --upgrade pip >/dev/null 2>&1 || true
+  "$VENV_PY" -m pip install -r "$ROOT_DIR/requirements.txt"
 fi
 
 echo "[start] Starting app..."
@@ -52,7 +78,7 @@ export PORT="${PORT:-5001}"
 export FLASK_DEBUG="${FLASK_DEBUG:-false}"
 
 # Start in background and write PID
-python -u main.py >"$LOG_FILE" 2>&1 &
+"$VENV_PY" -u main.py >"$LOG_FILE" 2>&1 &
 echo $! >"$PID_FILE"
 
 sleep 0.5

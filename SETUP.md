@@ -78,15 +78,41 @@ The app runs **without any environment variables** configured! Here's what works
 
 ## Installing Dependencies
 
-After setting up `.env`, install Python dependencies:
+After setting up `.env`, install Python dependencies.
+
+### Recommended (uses the repo scripts)
+
+```bash
+./start.sh
+```
+
+This will:
+- create `.venv` if needed
+- install `requirements.txt`
+- start the app (logs in `.run/app.log`)
+
+### Manual (virtualenv + pip)
 
 ```bash
 # Create virtualenv (recommended)
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
+```
+
+### macOS system dependencies (for PDF generation + OCR)
+
+Some features rely on **system libraries** in addition to Python packages:
+
+- **WeasyPrint** (`routes/print_pdf.py`): needs `glib/pango/cairo` (e.g. `libgobject-2.0`)
+- **pytesseract**: needs the `tesseract` binary
+
+If you use Homebrew:
+
+```bash
+brew install tesseract pango cairo gobject-introspection
 ```
 
 ## Running the App
@@ -96,6 +122,8 @@ python main.py
 ```
 
 Then open `http://localhost:5000` in your browser.
+
+If you ran `./start.sh`, it defaults to port **5001** (override with `PORT=5000 ./start.sh`).
 
 ## Verifying Configuration
 

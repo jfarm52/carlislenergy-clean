@@ -3,6 +3,8 @@
 This module intentionally keeps most logic as-is; later refactors can split it further.
 """
 
+from __future__ import annotations
+
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
