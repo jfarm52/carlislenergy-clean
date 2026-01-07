@@ -2716,6 +2716,15 @@
             }
         }
         
+        /* Expand/Collapse all bills toggle button */
+        .expand-all-bills-toggle:hover {
+            background: rgba(21, 101, 192, 0.15) !important;
+            border-color: rgba(21, 101, 192, 0.5) !important;
+        }
+        .expand-all-bills-toggle:active {
+            background: rgba(21, 101, 192, 0.25) !important;
+        }
+        
         /* ========== EMBEDDED BILL FILE ROW - 3-COLUMN GRID LAYOUT ========== */
         .embedded-bill-file-row {
             display: grid;
@@ -6244,6 +6253,13 @@
                 
                 // Initial navigation based on URL path (support both path and legacy hash)
                 setTimeout(() => {
+                    // If there's a projectId in the URL, skip navigation here - loadProjectById will handle it
+                    const urlParams = new URLSearchParams(window.location.search);
+                    if (urlParams.get('projectId')) {
+                        console.log('[nav] Deep link detected - deferring navigation to loadProjectById');
+                        return;
+                    }
+                    
                     let path = window.location.pathname.replace(/^\//, '');
                     const hash = window.location.hash.replace('#', '');
                     
@@ -11289,8 +11305,9 @@
                                     <span style="font-weight: 600; color: #1565c0;">Account: ${displayAccountNum}</span>
                                     <span style="display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.25rem;"><span style="font-weight: 500; color: #1976d2;">Meter:</span> <span style="font-weight: 500; color: #1976d2; white-space: nowrap;">${meterNumber}</span></span>
                                 </div>
-                                <div style="background: rgba(21, 101, 192, 0.1); padding: 0.5rem 1rem; font-size: 0.85rem; color: #555;">
-                                    ${dateRangeLabel}
+                                <div style="background: rgba(21, 101, 192, 0.1); padding: 0.5rem 1rem; font-size: 0.85rem; color: #555; display: flex; justify-content: space-between; align-items: center;">
+                                    <span>${dateRangeLabel}</span>
+                                    ${bills.length > 1 ? `<span class="expand-all-bills-toggle" data-meter-id="${meterId}" title="Expand/Collapse all bills" style="cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 4px; border: 1px solid rgba(21, 101, 192, 0.3); background: rgba(255,255,255,0.5); color: #1565c0; font-size: 0.75rem; display: flex; align-items: center; gap: 0.25rem; user-select: none;"><span class="expand-all-icon" style="transition: transform 0.2s;">▼</span></span>` : ''}
                                 </div>
                                 <div class="embedded-meter-header" data-meter-id="${meterId}" style="background: #fff; padding: 0.75rem 1rem; cursor: pointer; border-bottom: 1px solid #e0e0e0;">
                                     <div class="embedded-meter-stats-row">
@@ -11387,6 +11404,56 @@
                 billsContainer.style.display = isHidden ? 'block' : 'none';
                 // Arrow down (0deg) = expanded, Arrow right (-90deg) = collapsed
                 if (icon) icon.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(-90deg)';
+            }
+        };
+        
+        // Toggle all bill details within a meter section (expand or collapse all)
+        window.toggleAllBillsInMeter = function(meterId, toggleElement) {
+            const billsContainer = document.getElementById(`embedded-meter-bills-${meterId}`);
+            if (!billsContainer) return;
+            
+            // First, make sure the meter section is expanded
+            if (billsContainer.style.display === 'none' || !billsContainer.style.display) {
+                window.toggleEmbeddedMeter(meterId);
+            }
+            
+            // Get all bill detail elements within this meter
+            const billDetails = billsContainer.querySelectorAll('.embedded-bill-detail');
+            const billRows = billsContainer.querySelectorAll('.embedded-bill-row');
+            
+            // Check if any are currently expanded
+            let anyExpanded = false;
+            billDetails.forEach(detail => {
+                if (detail.style.display !== 'none') {
+                    anyExpanded = true;
+                }
+            });
+            
+            // Toggle icon in the expand-all button
+            const icon = toggleElement.querySelector('.expand-all-icon');
+            
+            if (anyExpanded) {
+                // Collapse all
+                billDetails.forEach(detail => {
+                    detail.style.display = 'none';
+                });
+                billRows.forEach(row => {
+                    const rowIcon = row.querySelector('.bill-expand-icon');
+                    if (rowIcon) rowIcon.style.transform = 'rotate(0deg)';
+                });
+                if (icon) icon.style.transform = 'rotate(-90deg)';
+            } else {
+                // Expand all - trigger each bill to load its details
+                billRows.forEach(row => {
+                    const billId = row.dataset.billId;
+                    if (billId) {
+                        const detailEl = document.getElementById(`embedded-bill-detail-${billId}`);
+                        if (detailEl && detailEl.style.display === 'none') {
+                            window.toggleEmbeddedBillDetail(billId);
+                        }
+                    }
+                });
+                if (icon) icon.style.transform = 'rotate(0deg)';
             }
         };
         
@@ -11637,6 +11704,17 @@
                     const meterId = this.dataset.meterId;
                     if (meterId) {
                         window.toggleEmbeddedMeter(meterId);
+                    }
+                });
+            });
+            
+            // Handle expand/collapse all bills toggle
+            document.querySelectorAll('.expand-all-bills-toggle[data-meter-id]').forEach(toggle => {
+                toggle.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const meterId = this.dataset.meterId;
+                    if (meterId) {
+                        window.toggleAllBillsInMeter(meterId, this);
                     }
                 });
             });
@@ -18276,7 +18354,17 @@
                 
                 // Only auto-navigate for deep links - other callers handle their own navigation
                 if (isDeepLink) {
-                    NavigationController.setView('currentProject');
+                    // Respect the current path instead of always going to currentProject
+                    const currentPath = window.location.pathname.replace(/^\//, '') || '';
+                    const projectViews = {
+                        'customer-info': 'customerInfo',
+                        'current-project': 'currentProject',
+                        'utility-bills': 'utilityBills',
+                        'print': 'printView'
+                    };
+                    // If we're on a project-specific view path, stay there
+                    const targetView = projectViews[currentPath] || 'currentProject';
+                    NavigationController.setView(targetView);
                 }
             } catch (e) {
                 console.error('[loadProjectById] Failed to load project:', e);

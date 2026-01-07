@@ -661,7 +661,11 @@ def regex_extract_all_fields(raw_text):
     
     # Look for actual ELECTRIC charges/usage section  
     electric_bill_markers = [
+        # Generic electric terms
         "electric charges",
+        "electric service",
+        "electric usage",
+        "electricity",
         "kwh used",
         "kwh total",
         "total kwh",
@@ -669,9 +673,34 @@ def regex_extract_all_fields(raw_text):
         "demand charges",
         "on-peak kwh",
         "off-peak kwh",
+        "mid-peak kwh",
+        "super off-peak",
         "high peak kwh",
         "low peak kwh",
         "base kwh",
+        # SCE specific
+        "southern california edison",
+        "sce",
+        "delivery service",
+        "generation service", 
+        "transmission",
+        "distribution",
+        "your electric use",
+        "your usage",
+        "billed kwh",
+        "total energy",
+        "electric meter",
+        "kilowatt",
+        "kilowatt-hour",
+        # PG&E / other utilities
+        "pacific gas",
+        "pg&e",
+        "sdg&e",
+        "san diego gas",
+        # Rate schedule indicators
+        "tou-",
+        "time-of-use",
+        "time of use",
     ]
     
     # Gas bill markers
@@ -956,56 +985,71 @@ def regex_extract_all_fields(raw_text):
                 print(f"[regex_extract] due_date: {due_raw} -> {result['due_date']}")
                 break
     
-    # ========== TOTAL KWH (electric only) ==========
-    if result["service_type"] in ("electric", "combined"):
-        kwh_patterns = [
-            # LADWP: "Electric Charges 10/24/25 - 11/26/25 81,920 kWh"
-            r"Electric\s*Charges\s*\d{1,2}/\d{1,2}/\d{2,4}\s*[-–]\s*\d{1,2}/\d{1,2}/\d{2,4}\s*([\d,]+(?:\.\d+)?)\s*kWh",
-            # LADWP: "Total kWh Consumption"
-            r"Total\s*kWh\s*Consumption[^\d]*([\d,]+(?:\.\d+)?)",
-            # Total Usage/kWh/Energy
-            r"Total\s*(?:Usage|kWh|Energy)[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-            r"Total\s*(?:Usage|kWh|Energy)[:\s]*([\d,]+(?:\.\d+)?)\s*(?:kilowatt)",
-            # X kWh Total
-            r"([\d,]+(?:\.\d+)?)\s*kWh\s*Total",
-            # Total kWh:
-            r"Total\s*kWh[:\s]*([\d,]+(?:\.\d+)?)",
-            # Usage: X kWh
-            r"Usage[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-            # kWh Used
-            r"kWh\s*Used[:\s]*([\d,]+(?:\.\d+)?)",
-            # Energy Charges ... X kWh
-            r"Energy\s*Charges.*?([\d,]+(?:\.\d+)?)\s*kWh",
-            # SCE: "Your usage this month" or "Total Usage"
-            r"Your\s*[Uu]sage\s*(?:this\s*month)?[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-            # Meter Reading shows kWh
-            r"Meter\s*Reading.*?([\d,]+(?:\.\d+)?)\s*kWh",
-            # Total Consumption
-            r"Total\s*Consumption[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-            # Electricity Used
-            r"Electricity\s*Used[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-            # kWh Delivered
-            r"kWh\s*Delivered[:\s]*([\d,]+(?:\.\d+)?)",
-            # Electric Delivery
-            r"Electric\s*Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-            # X kWh near "usage" or "used"
-            r"[Uu](?:sage|sed)[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-            # Standalone large number + kWh (careful - last resort)
-            r"\b([\d,]{3,}(?:\.\d+)?)\s*kWh\b",
-        ]
-        for pattern in kwh_patterns:
-            match = re.search(pattern, raw_text, re.IGNORECASE)
-            if match:
-                try:
-                    kwh_str = match.group(1).replace(",", "")
-                    kwh_val = float(kwh_str)
-                    # Sanity check - kWh should be reasonable (not a phone number, etc.)
-                    if kwh_val > 0 and kwh_val < 10000000:
-                        result["total_kwh"] = kwh_val
-                        print(f"[regex_extract] total_kwh: {result['total_kwh']}")
-                        break
-                except (ValueError, TypeError):
-                    pass
+    # ========== TOTAL KWH ==========
+    # Run kWh extraction regardless of initial service_type detection
+    # If we find kWh, that confirms it's electric
+    kwh_patterns = [
+        # LADWP: "Electric Charges 10/24/25 - 11/26/25 81,920 kWh"
+        r"Electric\s*Charges\s*\d{1,2}/\d{1,2}/\d{2,4}\s*[-–]\s*\d{1,2}/\d{1,2}/\d{2,4}\s*([\d,]+(?:\.\d+)?)\s*kWh",
+        # LADWP: "Total kWh Consumption"
+        r"Total\s*kWh\s*Consumption[^\d]*([\d,]+(?:\.\d+)?)",
+        # Total Usage/kWh/Energy
+        r"Total\s*(?:Usage|kWh|Energy)[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        r"Total\s*(?:Usage|kWh|Energy)[:\s]*([\d,]+(?:\.\d+)?)\s*(?:kilowatt)",
+        # X kWh Total
+        r"([\d,]+(?:\.\d+)?)\s*kWh\s*Total",
+        # Total kWh:
+        r"Total\s*kWh[:\s]*([\d,]+(?:\.\d+)?)",
+        # Usage: X kWh
+        r"Usage[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        # kWh Used
+        r"kWh\s*Used[:\s]*([\d,]+(?:\.\d+)?)",
+        # Energy Charges ... X kWh
+        r"Energy\s*Charges.*?([\d,]+(?:\.\d+)?)\s*kWh",
+        # SCE patterns
+        r"Your\s*[Uu]sage\s*(?:this\s*month)?[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        r"Billed\s*kWh[:\s]*([\d,]+(?:\.\d+)?)",
+        r"Total\s*Billed\s*kWh[:\s]*([\d,]+(?:\.\d+)?)",
+        r"kWh\s*Billed[:\s]*([\d,]+(?:\.\d+)?)",
+        # SCE table formats
+        r"Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        r"Generation[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        # Meter Reading shows kWh
+        r"Meter\s*Reading.*?([\d,]+(?:\.\d+)?)\s*kWh",
+        # Total Consumption
+        r"Total\s*Consumption[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        # Electricity Used
+        r"Electricity\s*Used[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        # kWh Delivered
+        r"kWh\s*Delivered[:\s]*([\d,]+(?:\.\d+)?)",
+        # Electric Delivery
+        r"Electric\s*Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        # X kWh near "usage" or "used"
+        r"[Uu](?:sage|sed)[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        # On-Peak/Off-Peak/Mid-Peak with kWh (capture the sum later)
+        r"On[\s\-]*Peak[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        r"Off[\s\-]*Peak[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        r"Mid[\s\-]*Peak[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        # Standalone large number + kWh (careful - last resort)
+        r"\b([\d,]{3,}(?:\.\d+)?)\s*kWh\b",
+    ]
+    for pattern in kwh_patterns:
+        match = re.search(pattern, raw_text, re.IGNORECASE)
+        if match:
+            try:
+                kwh_str = match.group(1).replace(",", "")
+                kwh_val = float(kwh_str)
+                # Sanity check - kWh should be reasonable (not a phone number, etc.)
+                if kwh_val > 0 and kwh_val < 10000000:
+                    result["total_kwh"] = kwh_val
+                    # If we found kWh, this is definitely electric
+                    if result["service_type"] not in ("electric", "combined"):
+                        result["service_type"] = "electric"
+                        print(f"[regex_extract] Found kWh - upgrading service_type to 'electric'")
+                    print(f"[regex_extract] total_kwh: {result['total_kwh']}")
+                    break
+            except (ValueError, TypeError):
+                pass
     
     # ========== TOTAL AMOUNT ==========
     # Universal patterns for total amount due
@@ -1096,35 +1140,70 @@ def regex_extract_all_fields(raw_text):
                 print(f"[regex_extract] meter_number: {result['meter_number']}")
                 break
     
-    # ========== TOU BREAKDOWN (for electric bills) ==========
-    if result["service_type"] in ("electric", "combined"):
-        tou_data = []
-        # LADWP format: "High Peak Subtotal (11,680 kWh x $0.25624/kWh) $2,992.92"
-        ladwp_tou = r"(High\s*Peak|Low\s*Peak|Base)\s*Subtotal\s*\(\s*([\d,]+(?:\.\d+)?)\s*kWh\s*x\s*\$?([\d.]+)/kWh\s*\)\s*\$?([\d,]+(?:\.\d+)?)"
-        for match in re.finditer(ladwp_tou, raw_text, re.IGNORECASE):
-            period = match.group(1).strip()
-            kwh = float(match.group(2).replace(",", ""))
-            rate = float(match.group(3))
-            cost = float(match.group(4).replace(",", ""))
-            period_map = {"High Peak": "On-Peak", "Low Peak": "Off-Peak", "Base": "Super Off-Peak"}
-            tou_data.append({
-                "period": period_map.get(period.title(), period.title()),
-                "kwh": kwh, "rate": rate, "estimated_cost": cost
-            })
+    # ========== TOU BREAKDOWN ==========
+    # Run TOU extraction always - if we find TOU data, that confirms it's electric
+    tou_data = []
+    # LADWP format: "High Peak Subtotal (11,680 kWh x $0.25624/kWh) $2,992.92"
+    ladwp_tou = r"(High\s*Peak|Low\s*Peak|Base)\s*Subtotal\s*\(\s*([\d,]+(?:\.\d+)?)\s*kWh\s*x\s*\$?([\d.]+)/kWh\s*\)\s*\$?([\d,]+(?:\.\d+)?)"
+    for match in re.finditer(ladwp_tou, raw_text, re.IGNORECASE):
+        period = match.group(1).strip()
+        kwh = float(match.group(2).replace(",", ""))
+        rate = float(match.group(3))
+        cost = float(match.group(4).replace(",", ""))
+        period_map = {"High Peak": "On-Peak", "Low Peak": "Off-Peak", "Base": "Super Off-Peak"}
+        tou_data.append({
+            "period": period_map.get(period.title(), period.title()),
+            "kwh": kwh, "rate": rate, "estimated_cost": cost
+        })
+    
+    # SCE bills: TOU periods are NOT labeled! They're in the Usage Summary table like:
+    # "13401 kWh   x   $0.14823   =   $1,986.43"
+    # "5636 kWh    x   $0.13829   =   $779.41"
+    # "78701 kWh   x   $0.10952   =   $8,619.33"
+    # We extract all rows and infer periods from rate (highest = On-Peak, middle = Mid-Peak, lowest = Off-Peak)
+    if not tou_data:
+        # Pattern: "13401 kWh x $0.14823 = $1,986.43" or "13,401 kWh x $0.14823 = $1,986.43"
+        sce_usage_pattern = r"([\d,]+)\s*kWh\s+x\s+\$?([\d.]+)\s*=\s*\$?([\d,]+\.\d{2})"
+        sce_matches = []
+        for match in re.finditer(sce_usage_pattern, raw_text, re.IGNORECASE):
+            kwh_str = match.group(1).replace(",", "")
+            rate_str = match.group(2)
+            cost_str = match.group(3).replace(",", "")
+            try:
+                kwh = float(kwh_str)
+                rate = float(rate_str)
+                cost = float(cost_str)
+                # Skip very small entries (likely line items, not TOU periods)
+                if kwh < 100:
+                    continue
+                sce_matches.append({"kwh": kwh, "rate": rate, "estimated_cost": cost})
+            except ValueError:
+                continue
         
-        # SCE format: "On-Peak 3,064.000 0.17271 529.59"
-        if not tou_data:
-            sce_tou = r"(On[\s\-]*Peak|Mid[\s\-]*Peak|Off[\s\-]*Peak|Super[\s\-]*Off[\s\-]*Peak)[\s\t]+([\d,]+\.?\d*)\s+([\d\.]+)\s+([\d,]+\.?\d*)"
-            for match in re.finditer(sce_tou, raw_text, re.IGNORECASE):
-                period = match.group(1).strip().replace("-", " ").title()
-                kwh = float(match.group(2).replace(",", ""))
-                rate = float(match.group(3))
-                cost = float(match.group(4).replace(",", ""))
-                tou_data.append({"period": period, "kwh": kwh, "rate": rate, "estimated_cost": cost})
-        
-        if tou_data:
-            result["tou_breakdown"] = tou_data
-            print(f"[regex_extract] tou_breakdown: {len(tou_data)} periods")
+        # If we found 2-4 rows, these are likely TOU periods
+        # Sort by rate descending: On-Peak (highest), Mid-Peak, Off-Peak (lowest)
+        if 2 <= len(sce_matches) <= 4:
+            sce_matches.sort(key=lambda x: x["rate"], reverse=True)
+            # Assign period names based on position
+            if len(sce_matches) == 2:
+                period_names = ["On-Peak", "Off-Peak"]
+            elif len(sce_matches) == 3:
+                period_names = ["On-Peak", "Mid-Peak", "Off-Peak"]
+            else:  # 4 periods
+                period_names = ["On-Peak", "Mid-Peak", "Off-Peak", "Super Off-Peak"]
+            
+            for i, entry in enumerate(sce_matches):
+                entry["period"] = period_names[i]
+                tou_data.append(entry)
+                print(f"[regex_extract] SCE TOU inferred: {entry['period']} - {entry['kwh']} kWh @ ${entry['rate']} = ${entry['estimated_cost']}")
+    
+    if tou_data:
+        result["tou_breakdown"] = tou_data
+        # If we found TOU data, this is definitely electric
+        if result["service_type"] not in ("electric", "combined"):
+            result["service_type"] = "electric"
+            print(f"[regex_extract] Found TOU data - upgrading service_type to 'electric'")
+        print(f"[regex_extract] tou_breakdown: {len(tou_data)} periods")
     
     # ========== DETERMINE SUCCESS ==========
     # For non-electric: success if we got utility + account + amount
@@ -1135,15 +1214,22 @@ def regex_extract_all_fields(raw_text):
             result["total_amount"]
         )
     else:
-        # For electric: success if we got all critical fields
-        result["success"] = bool(
-            result["utility_name"] and 
-            result["account_number"] and 
-            result["total_kwh"] and 
-            result["total_amount"] and
-            result["billing_period_start"] and
-            result["billing_period_end"]
-        )
+        # For electric: success if we got most critical fields
+        # Don't require kWh - it might just not be extractable via regex
+        # The AI fallback will handle it
+        has_utility = bool(result["utility_name"])
+        has_account = bool(result["account_number"])
+        has_amount = bool(result["total_amount"])
+        has_dates = bool(result["billing_period_start"] and result["billing_period_end"])
+        has_kwh = bool(result["total_kwh"])
+        
+        # If we have 4/5 critical fields, call it successful enough to skip AI
+        # AI fallback will be called only if truly missing critical data
+        critical_count = sum([has_utility, has_account, has_amount, has_dates, has_kwh])
+        result["success"] = critical_count >= 4
+        
+        print(f"[regex_extract] Critical fields: utility={has_utility}, account={has_account}, "
+              f"amount={has_amount}, dates={has_dates}, kwh={has_kwh} ({critical_count}/5)")
     
     print(f"[regex_extract] Extraction {'SUCCESSFUL' if result['success'] else 'INCOMPLETE'} - service_type={result['service_type']}")
     return result

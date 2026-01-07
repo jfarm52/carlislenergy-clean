@@ -323,13 +323,12 @@ def register(*, bills_bp, is_enabled, extraction_progress, populate_normalized_t
 
     @bills_bp.route("/api/accounts/<int:account_id>/summary", methods=["GET"])
     def get_account_summary_endpoint(account_id):
-        """Get annual summary for an account: combined totals + per-meter breakdown."""
+        """Get summary for an account: combined totals + per-meter breakdown. No date restrictions."""
         if not is_enabled():
             return jsonify({"error": "Bills feature is disabled"}), 403
 
         try:
-            months = request.args.get("months", 12, type=int)
-            result = get_account_summary(account_id, months)
+            result = get_account_summary(account_id)
             return jsonify({"success": True, **result})
         except Exception as e:
             print(f"[bills] Error getting account summary: {e}")
@@ -337,13 +336,12 @@ def register(*, bills_bp, is_enabled, extraction_progress, populate_normalized_t
 
     @bills_bp.route("/api/meters/<int:meter_id>/bills", methods=["GET"])
     def get_meter_bills_endpoint(meter_id):
-        """Get list of bills for a meter with summary data."""
+        """Get list of bills for a meter with summary data. No date restrictions."""
         if not is_enabled():
             return jsonify({"error": "Bills feature is disabled"}), 403
 
         try:
-            months = request.args.get("months", 12, type=int)
-            result = get_meter_bills(meter_id, months)
+            result = get_meter_bills(meter_id)
             return jsonify({"success": True, **result})
         except Exception as e:
             print(f"[bills] Error getting meter bills: {e}")
@@ -366,13 +364,12 @@ def register(*, bills_bp, is_enabled, extraction_progress, populate_normalized_t
 
     @bills_bp.route("/api/accounts/<int:account_id>/meters/<int:meter_id>/months", methods=["GET"])
     def get_meter_months_endpoint(account_id, meter_id):
-        """Get month-by-month breakdown for a specific meter under an account."""
+        """Get month-by-month breakdown for a specific meter under an account. No date restrictions."""
         if not is_enabled():
             return jsonify({"error": "Bills feature is disabled"}), 403
 
         try:
-            months = request.args.get("months", 12, type=int)
-            result = get_meter_months(account_id, meter_id, months)
+            result = get_meter_months(account_id, meter_id)
             return jsonify({"success": True, **result})
         except Exception as e:
             print(f"[bills] Error getting meter months: {e}")
@@ -380,18 +377,17 @@ def register(*, bills_bp, is_enabled, extraction_progress, populate_normalized_t
 
     @bills_bp.route("/api/projects/<project_id>/bills/summary", methods=["GET"])
     def get_project_bills_summary(project_id):
-        """Get bills summary for a project including annual summaries per account."""
+        """Get bills summary for a project including summaries per account. No date restrictions."""
         if not is_enabled():
             return jsonify({"error": "Bills feature is disabled"}), 403
 
         try:
-            months = request.args.get("months", 12, type=int)
             service_filter = request.args.get("service")
 
             accounts = get_utility_accounts_for_project(project_id, service_filter=service_filter)
             summaries = []
             for acc in accounts:
-                summary = get_account_summary(acc["id"], months, service_filter=service_filter)
+                summary = get_account_summary(acc["id"], service_filter=service_filter)
                 summary["utilityName"] = acc["utility_name"]
                 summary["accountNumber"] = acc["account_number"]
                 summaries.append(summary)
@@ -435,7 +431,6 @@ def register(*, bills_bp, is_enabled, extraction_progress, populate_normalized_t
                 {
                     "success": True,
                     "projectId": project_id,
-                    "months": months,
                     "accounts": summaries,
                     "fileCounts": file_counts,
                 }

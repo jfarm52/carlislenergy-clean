@@ -322,20 +322,17 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
                     service_type = "gas"
                     print(f"[bill_extractor] Inferred service_type='gas' from rate_schedule: {rate_schedule}")
 
-            # Raw text hints (fallback if rate got stripped)
-            if service_type == "electric":
-                if any(h in raw_lower for h in ["water schedule", "water charges", "sewer charges", "sewer service"]):
-                    service_type = "water"
-                    print(f"[bill_extractor] Inferred service_type='water' from raw_text")
-                elif "therm" in raw_lower or "gas charges" in raw_lower:
-                    service_type = "gas"
-                    print(f"[bill_extractor] Inferred service_type='gas' from raw_text")
+            # NOTE: We removed raw_text keyword detection here because SCE bills
+            # contain boilerplate text mentioning "gas", "therm", etc. when explaining
+            # other utility services, which caused false positives.
+            # The regex_extract_all_fields function now handles service_type detection
+            # more accurately based on actual content markers.
 
-            # No kWh but charges present → likely non-electric
-            if service_type == "electric":
-                if (total_kwh is None or total_kwh == 0) and total_amount and total_amount > 0:
-                    service_type = "other"
-                    print(f"[bill_extractor] Inferred service_type='other' - no kWh but has charges")
+            # NOTE: We intentionally DO NOT override electric→other based on missing kWh
+            # Missing kWh means our regex patterns failed, not that it's non-electric
+            # The bill will be flagged as "needs_review" due to missing critical fields
+            if service_type == "electric" and (total_kwh is None or total_kwh == 0):
+                print(f"[bill_extractor] WARNING: Electric bill with no kWh extracted - patterns may need update")
         
         if service_type not in ("electric", "water", "gas", "combined", "other"):
             service_type = "electric"

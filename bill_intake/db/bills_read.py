@@ -185,11 +185,13 @@ def get_grouped_bills_data(project_id, service_filter=None):
         conn.close()
 
 
-def get_account_summary(account_id, months=12, service_filter=None):
+def get_account_summary(account_id, service_filter=None):
     """
     Get summary for an account: combined totals + per-meter breakdown.
     Returns blended rate in dollars/kWh, avg cost per day, and TOU breakdown totals.
     Deduplicates bills by (meter_id, period_start, period_end, total_kwh, total_amount_due).
+    
+    No date restrictions - all bills are included regardless of date.
     """
     conn = get_connection()
     try:
@@ -209,7 +211,6 @@ def get_account_summary(account_id, months=12, service_filter=None):
                     FROM bills b
                     {service_join}
                     WHERE b.account_id = %s
-                    AND b.period_end >= (CURRENT_DATE - INTERVAL '%s months')
                     {service_condition}
                     ORDER BY b.meter_id, b.period_start, b.period_end, b.total_kwh, b.total_amount_due, b.id
                 )
@@ -228,7 +229,7 @@ def get_account_summary(account_id, months=12, service_filter=None):
                     SUM(tou_super_off_cost) AS tou_super_off_cost
                 FROM dedupe
                 """,
-                (account_id, months),
+                (account_id,),
             )
             combined = cur.fetchone()
 
@@ -270,7 +271,6 @@ def get_account_summary(account_id, months=12, service_filter=None):
                     FROM bills b
                     {service_join}
                     WHERE b.account_id = %s
-                    AND b.period_end >= (CURRENT_DATE - INTERVAL '%s months')
                     {service_condition}
                     ORDER BY b.meter_id, b.period_start, b.period_end, b.total_kwh, b.total_amount_due, b.id
                 )
@@ -294,7 +294,7 @@ def get_account_summary(account_id, months=12, service_filter=None):
                 GROUP BY d.meter_id, m.meter_number
                 ORDER BY m.meter_number
                 """,
-                (account_id, months),
+                (account_id,),
             )
             meters_raw = cur.fetchall()
 
@@ -344,11 +344,10 @@ def get_account_summary(account_id, months=12, service_filter=None):
                     FROM bills b
                     {service_join}
                     WHERE b.meter_id = %s
-                    AND b.period_end >= (CURRENT_DATE - INTERVAL '%s months')
                     {service_condition}
                     ORDER BY b.period_end DESC
                     """,
-                    (meter_id, months),
+                    (meter_id,),
                 )
                 bills_raw = cur.fetchall()
 
@@ -389,13 +388,13 @@ def get_account_summary(account_id, months=12, service_filter=None):
 
                 meter["bills"] = bills
 
-            return {"accountId": account_id, "months": months, "combined": combined_data, "meters": meters}
+            return {"accountId": account_id, "combined": combined_data, "meters": meters}
     finally:
         conn.close()
 
 
-def get_meter_bills(meter_id, months=12):
-    """Get list of bills for a meter with summary data."""
+def get_meter_bills(meter_id):
+    """Get list of bills for a meter with summary data. No date restrictions."""
     conn = get_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -412,10 +411,9 @@ def get_meter_bills(meter_id, months=12):
                     blended_rate_dollars, avg_cost_per_day
                 FROM bills
                 WHERE meter_id = %s
-                AND period_end >= (CURRENT_DATE - INTERVAL '%s months')
                 ORDER BY period_end DESC
                 """,
-                (meter_id, months),
+                (meter_id,),
             )
             bills_raw = cur.fetchall()
 
@@ -477,7 +475,7 @@ def get_meter_bills(meter_id, months=12):
                     }
                 )
 
-            return {"meterId": meter_id, "months": months, "bills": bills}
+            return {"meterId": meter_id, "bills": bills}
     finally:
         conn.close()
 
@@ -635,8 +633,8 @@ def get_bill_detail(bill_id):
         conn.close()
 
 
-def get_meter_months(account_id, meter_id, months=12):
-    """Get month-by-month breakdown for a specific meter under an account."""
+def get_meter_months(account_id, meter_id):
+    """Get month-by-month breakdown for a specific meter under an account. No date restrictions."""
     conn = get_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -651,10 +649,9 @@ def get_meter_months(account_id, meter_id, months=12):
                     blended_rate_dollars, avg_cost_per_day
                 FROM bills
                 WHERE account_id = %s AND meter_id = %s
-                AND period_end >= (CURRENT_DATE - INTERVAL '%s months')
                 ORDER BY period_end DESC
                 """,
-                (account_id, meter_id, months),
+                (account_id, meter_id),
             )
             bills_raw = cur.fetchall()
 
