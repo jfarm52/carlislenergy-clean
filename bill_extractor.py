@@ -709,74 +709,167 @@ def regex_extract_all_fields(raw_text):
         print(f"[regex_extract] No clear service type markers - defaulting to electric")
     
     # ========== UTILITY NAME ==========
+    # Comprehensive list: California + Major National Utilities
     utility_patterns = [
-        r"(Southern California Edison|SCE)",
-        r"(Los Angeles Department of Water and Power|LADWP|LA ?DWP)",
-        r"(Pacific Gas (?:and|&) Electric|PG&E|PGE)",
-        r"(San Diego Gas (?:and|&) Electric|SDG&E|SDGE)",
-        r"(Sacramento Municipal Utility District|SMUD)",
-        r"(Burbank Water and Power|BWP)",
-        r"(Glendale Water (?:and|&) Power|GWP)",
-        r"(Pasadena Water (?:and|&) Power|PWP)",
+        # --- CALIFORNIA ---
+        (r"(Southern California Edison|SCE)", "Southern California Edison"),
+        (r"(Los Angeles Department of Water and Power|LADWP|LA\s*DWP)", "Los Angeles Department of Water and Power"),
+        (r"(Pacific Gas (?:and|&) Electric|PG&E|PGE)", "Pacific Gas and Electric"),
+        (r"(San Diego Gas (?:and|&) Electric|SDG&E|SDGE)", "San Diego Gas & Electric"),
+        (r"(Sacramento Municipal Utility District|SMUD)", "Sacramento Municipal Utility District"),
+        (r"(Burbank Water and Power|BWP)", "Burbank Water and Power"),
+        (r"(Glendale Water (?:and|&) Power|GWP)", "Glendale Water and Power"),
+        (r"(Pasadena Water (?:and|&) Power|PWP)", "Pasadena Water and Power"),
+        (r"(Los Angeles Water (?:and|&) Power)", "Los Angeles Department of Water and Power"),
+        (r"(Imperial Irrigation District|IID)", "Imperial Irrigation District"),
+        (r"(Riverside Public Utilities|RPU)", "Riverside Public Utilities"),
+        (r"(Anaheim Public Utilities)", "Anaheim Public Utilities"),
+        # --- TEXAS ---
+        (r"(TXU Energy|TXU)", "TXU Energy"),
+        (r"(Reliant Energy|Reliant)", "Reliant Energy"),
+        (r"(Direct Energy)", "Direct Energy"),
+        (r"(Oncor)", "Oncor"),
+        (r"(CenterPoint Energy)", "CenterPoint Energy"),
+        (r"(AEP Texas)", "AEP Texas"),
+        # --- NORTHEAST ---
+        (r"(Con Edison|ConEd|Consolidated Edison)", "Consolidated Edison"),
+        (r"(PSEG|Public Service Electric (?:and|&) Gas)", "Public Service Electric and Gas"),
+        (r"(National Grid)", "National Grid"),
+        (r"(Eversource)", "Eversource"),
+        (r"(PECO Energy|PECO)", "PECO Energy"),
+        (r"(PPL Electric)", "PPL Electric"),
+        (r"(Jersey Central Power (?:and|&) Light|JCP&L)", "Jersey Central Power & Light"),
+        # --- SOUTHEAST ---
+        (r"(Duke Energy)", "Duke Energy"),
+        (r"(Florida Power (?:and|&) Light|FPL)", "Florida Power & Light"),
+        (r"(Georgia Power)", "Georgia Power"),
+        (r"(Tampa Electric|TECO)", "Tampa Electric"),
+        (r"(Dominion Energy|Dominion Virginia Power)", "Dominion Energy"),
+        (r"(Progress Energy)", "Progress Energy"),
+        (r"(Entergy)", "Entergy"),
+        # --- MIDWEST ---
+        (r"(ComEd|Commonwealth Edison)", "Commonwealth Edison"),
+        (r"(Ameren)", "Ameren"),
+        (r"(DTE Energy|DTE)", "DTE Energy"),
+        (r"(Consumers Energy)", "Consumers Energy"),
+        (r"(We Energies|Wisconsin Energy)", "We Energies"),
+        (r"(Xcel Energy)", "Xcel Energy"),
+        (r"(MidAmerican Energy)", "MidAmerican Energy"),
+        # --- WEST ---
+        (r"(Arizona Public Service|APS)", "Arizona Public Service"),
+        (r"(Salt River Project|SRP)", "Salt River Project"),
+        (r"(NV Energy|Nevada Energy)", "NV Energy"),
+        (r"(Rocky Mountain Power)", "Rocky Mountain Power"),
+        (r"(PacifiCorp)", "PacifiCorp"),
+        (r"(Puget Sound Energy|PSE)", "Puget Sound Energy"),
+        (r"(Portland General Electric|PGE)", "Portland General Electric"),
+        (r"(Hawaiian Electric|HECO)", "Hawaiian Electric"),
+        # --- GENERIC FALLBACK ---
+        (r"Electric\s*(?:Company|Service|Utility)[:\s]*([A-Z][A-Za-z\s&]+(?:Electric|Power|Energy|Utility))", None),
     ]
-    for pattern in utility_patterns:
+    for pattern, canonical_name in utility_patterns:
         match = re.search(pattern, raw_text, re.IGNORECASE)
         if match:
-            result["utility_name"] = match.group(1).strip()
+            result["utility_name"] = canonical_name if canonical_name else match.group(1).strip()
             print(f"[regex_extract] utility_name: {result['utility_name']}")
             break
     
     # ========== ACCOUNT NUMBER ==========
+    # Universal patterns covering various utility formats
     account_patterns = [
-        r"SA\s*#\s*[:\s]*(\d{10})",  # LADWP: "SA # : 7729100271" or "SA #: 8729100019"
+        # LADWP: "SA # : 7729100271" or "SA #: 8729100019"
+        r"SA\s*#\s*[:\s]*(\d{10})",
+        # SCE: "Service Account: 3-XXX-XXXX-XX" format
+        r"Service\s*Account[:\s]*(\d[\-\d]{8,20})",
+        # Standard labeled account
         r"Account\s*(?:Number|#|No\.?)[:\s]*([A-Z0-9\-]{6,20})",
-        r"Customer\s*Account[:\s]*([A-Z0-9\-]{6,20})",
-        r"Account[:\s]+(\d{3,4}[\-\s]\d{3,4}[\-\s]\d{3,4})",  # XXX-XXX-XXX format
+        # Customer account
+        r"Customer\s*(?:Account|#|No\.?)[:\s]*([A-Z0-9\-]{6,20})",
+        # Just "Account:" followed by number
+        r"Account[:\s]+([A-Z0-9][\-A-Z0-9]{5,20})",
+        # XXX-XXX-XXX format (common)
+        r"Account[:\s]+(\d{3,4}[\-\s]\d{3,4}[\-\s]\d{3,4})",
+        # Acct abbreviation
         r"Acct\.?\s*#?[:\s]*([A-Z0-9\-]{6,20})",
+        # Bill account
+        r"Bill(?:ing)?\s*Account[:\s]*([A-Z0-9\-]{6,20})",
+        # Service ID
+        r"Service\s*ID[:\s]*([A-Z0-9\-]{6,20})",
+        # Electric account
+        r"Electric\s*Account[:\s]*([A-Z0-9\-]{6,20})",
+        # Just a long number after "Your account" text
+        r"Your\s*Account[:\s]*([A-Z0-9\-]{6,20})",
     ]
     for pattern in account_patterns:
         match = re.search(pattern, raw_text, re.IGNORECASE)
         if match:
-            result["account_number"] = match.group(1).strip()
-            print(f"[regex_extract] account_number: {result['account_number']}")
-            break
+            acct = match.group(1).strip()
+            # Skip if too short or looks invalid
+            if len(acct) >= 6:
+                result["account_number"] = acct
+                print(f"[regex_extract] account_number: {result['account_number']}")
+                break
     
     # ========== SERVICE ADDRESS ==========
-    # For LADWP bills, the address is at the top (e.g., "739 DECATUR ST, LOS ANGELES, CA 90021")
-    # NOT in the "SERVES" field which contains meter description
+    # Universal patterns - look for labeled addresses and street patterns
     address_patterns = [
-        # LADWP/Generic: Street address with city, state, ZIP (anywhere in text)
-        r"(\d{2,5}\s+[A-Z][A-Za-z\s]+(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|RD|ROAD|WAY|LN|LANE|CT|COURT|PL|PLACE)[,\s]+[A-Z][A-Za-z\s]+[,\s]*(?:CA|CALIFORNIA)\s*\d{5}(?:-\d{4})?)",
-        # Labeled SERVICE ADDRESS
+        # Labeled SERVICE ADDRESS (most reliable)
         r"SERVICE\s*ADDRESS[:\-]?\s*(.{10,100})",
         r"Service\s*Location[:\-]?\s*(.{10,100})",
-        r"Premise\s*Address[:\-]?\s*(.{10,100})",
-        # DO NOT use SERVES - it contains meter description on LADWP bills, not address
+        r"Premise\s*(?:Address)?[:\-]?\s*(.{10,100})",
+        r"Property\s*Address[:\-]?\s*(.{10,100})",
+        r"Installation\s*Address[:\-]?\s*(.{10,100})",
+        r"Billing\s*Address[:\-]?\s*(.{10,100})",
+        r"Location[:\-]?\s*(.{10,100})",
+        # Generic US street address with state abbreviation + ZIP
+        r"(\d{2,5}\s+[A-Z][A-Za-z\s]+(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|RD|ROAD|WAY|LN|LANE|CT|COURT|PL|PLACE|CIR|CIRCLE|TRL|TRAIL|PKWY|PARKWAY)[,\s]+[A-Z][A-Za-z\s]+[,\s]*(?:CA|NY|TX|FL|IL|PA|OH|GA|NC|MI|NJ|VA|WA|AZ|MA|TN|IN|MO|MD|WI|CO|MN|SC|AL|LA|KY|OR|OK|CT|UT|IA|NV|AR|MS|KS|NM|NE|WV|ID|HI|NH|ME|RI|MT|DE|SD|ND|AK|VT|WY|DC)\s*\d{5}(?:-\d{4})?)",
+        # Street number + name + apt/unit (without full city/state)
+        r"(\d{2,5}\s+[A-Z][A-Za-z0-9\s]+(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|RD|ROAD|WAY|LN|LANE|CT|COURT|PL|PLACE)(?:\s*(?:#|APT|UNIT|STE|SUITE)\s*[A-Z0-9]+)?)",
     ]
     for pattern in address_patterns:
         match = re.search(pattern, raw_text, re.IGNORECASE)
         if match:
             addr = match.group(1).strip()
             # Clean up - stop at common field boundaries
-            addr = re.split(r"\n|POD-ID|BILLING|ACCOUNT|METER|RATE|NEXT", addr, maxsplit=1)[0].strip()
+            addr = re.split(r"\n\n|\nPOD-ID|\nBILLING|\nACCOUNT|\nMETER|\nRATE|\nNEXT|\nSERVICE\s*ACCOUNT|\nCUSTOMER", addr, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+            # Remove trailing punctuation
+            addr = addr.rstrip(',;:.')
             # Skip if it looks like a meter number (contains APM, kVARH, etc.)
-            if "APM" in addr.upper() or "KVARH" in addr.upper() or "BASE" in addr.upper():
+            if any(skip in addr.upper() for skip in ["APM", "KVARH", "BASE KVARH", "METER NUMBER", "SERVES"]):
                 continue
-            if len(addr) >= 10:
+            # Must have at least a number and some letters
+            if len(addr) >= 10 and re.search(r'\d', addr) and re.search(r'[A-Za-z]', addr):
                 result["service_address"] = addr
                 print(f"[regex_extract] service_address: {result['service_address']}")
                 break
     
     # ========== RATE SCHEDULE ==========
+    # Universal patterns for rate schedule/tariff across utilities
     rate_patterns = [
-        # LADWP: "RATE SCHEDULE" followed by full description on next line(s)
-        # e.g., "A-2 and A-2[i] Primary Electric - Rate B TOU - KVAR Metered Service"
+        # LADWP: "RATE SCHEDULE" followed by full description
         r"RATE\s*SCHEDULE\s*\n([A-Z][\-\d\[\]i]+(?:\s+and\s+[A-Z][\-\d\[\]i]+)?[^\n]*(?:\n[A-Z][^\n]*)?)",
         r"RATE\s*SCHEDULE[:\s]*([A-Z][\-\d\[\]i]+(?:\s+and\s+[A-Z][\-\d\[\]i]+)?[^\n]*)",
-        r"Rate[:\s]+(TOU[\-\s]?[A-Z0-9\-]+)",
-        r"Rate[:\s]+([A-Z][\-]?\d+(?:\[[A-Za-z0-9]+\])?)",
-        r"Schedule[:\s]+([A-Z0-9\-]+)",
-        r"Your\s*Rate[:\s]+([A-Z0-9\-]+)",
+        # SCE TOU rates: "TOU-D-4-9PM", "TOU-D-A", "TOU-GS-1", etc.
+        r"Rate[:\s]*(TOU[\-\s]?[A-Z0-9\-]+(?:\-[A-Z0-9]+)*)",
+        # SCE: "Schedule TOU-D-4-9PM" or "Schedule D"
+        r"Schedule[:\s]*(TOU[\-\s]?[A-Z0-9\-]+)",
+        r"Schedule[:\s]*([A-Z][\-]?[A-Z0-9\-]*)",
+        # Generic rate code: A-1, D, GS-1, etc.
+        r"Rate\s*(?:Code|Schedule)?[:\s]*([A-Z][\-]?\d+[A-Z]?(?:\-[A-Z0-9]+)?)",
+        # Your Rate:
+        r"Your\s*Rate[:\s]+([A-Z0-9\-]+(?:\s*[A-Z0-9\-]+)?)",
+        # Tariff
+        r"Tariff[:\s]*([A-Z0-9\-]+)",
+        # Service Classification
+        r"Service\s*Classification[:\s]*([A-Z0-9\-]+)",
+        # Rate Class
+        r"Rate\s*Class[:\s]*([A-Z0-9\-\s]+)",
+        # Electric Service Rate
+        r"Electric\s*(?:Service\s*)?Rate[:\s]*([A-Z0-9\-]+)",
+        # Residential/Commercial rate names
+        r"Rate[:\s]*(Residential|Commercial|Industrial|Small\s*Business|General\s*Service|Time[\-\s]*of[\-\s]*Use)",
+        # Water rate schedules
+        r"(?:Water\s*)?Schedule[:\s]*(Water\s*Schedule\s*[A-Z][\s\-\w]*)",
     ]
     for pattern in rate_patterns:
         match = re.search(pattern, raw_text, re.IGNORECASE | re.MULTILINE)
@@ -784,20 +877,36 @@ def regex_extract_all_fields(raw_text):
             rate = match.group(1).strip()
             # Normalize whitespace (including newlines)
             rate = re.sub(r'\s+', ' ', rate).strip()
-            # Reject garbage - stop at "NEXT SCHEDULED" if accidentally captured
-            rate = re.split(r'NEXT\s*SCHEDULED|METER\s*NUMBER', rate, maxsplit=1)[0].strip()
-            if len(rate) >= 2 and len(rate) <= 100 and not any(bad in rate.lower() for bad in ["please", "www."]):
+            # Reject garbage - stop at "NEXT SCHEDULED" or other field boundaries
+            rate = re.split(r'NEXT\s*SCHEDULED|METER\s*NUMBER|BILLING\s*PERIOD|ZONE|RIN:', rate, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+            # Validation
+            if len(rate) >= 1 and len(rate) <= 100 and not any(bad in rate.lower() for bad in ["please", "www.", "contact", "questions"]):
                 result["rate_schedule"] = rate
                 print(f"[regex_extract] rate_schedule: {result['rate_schedule']}")
                 break
     
     # ========== BILLING PERIOD ==========
-    # Format: MM/DD/YYYY - MM/DD/YYYY or "Nov 1, 2024 to Dec 1, 2024"
+    # Universal patterns covering various date formats
     period_patterns = [
-        r"(?:Billing|Service)\s*Period[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})\s*[-–to]+\s*(\d{1,2}/\d{1,2}/\d{2,4})",
-        r"(?:Billing|Service)\s*Period[:\s]*(\w+\s+\d{1,2},?\s+\d{4})\s*[-–to]+\s*(\w+\s+\d{1,2},?\s+\d{4})",
-        r"From[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})\s*[-–to]+\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+        # Labeled: "Billing Period: MM/DD/YYYY - MM/DD/YYYY"
+        r"(?:Billing|Service|Statement|Usage)\s*Period[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})\s*[-–to]+\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+        # Labeled with word dates: "Billing Period: Nov 1, 2024 to Dec 1, 2024"
+        r"(?:Billing|Service|Statement)\s*Period[:\s]*(\w+\s+\d{1,2},?\s+\d{4})\s*[-–to]+\s*(\w+\s+\d{1,2},?\s+\d{4})",
+        # From/To format
+        r"From[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})\s*(?:To|[-–])\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+        # Service From/To
+        r"Service\s*From[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})\s*(?:To|Through)[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})",
+        # Just two dates with dash (common)
         r"(\d{1,2}/\d{1,2}/\d{2,4})\s*[-–]\s*(\d{1,2}/\d{1,2}/\d{2,4})\s*(?:\d+\s*days?)?",
+        # SCE: "For usage from Nov 05 to Dec 04, 2024"
+        r"(?:For\s*)?[Uu]sage\s*(?:from\s*)?(\w+\s+\d{1,2})\s*(?:to|through|-)\s*(\w+\s+\d{1,2},?\s+\d{4})",
+        # Read dates: "Current Read: 12/04/24  Previous Read: 11/05/24"
+        r"Previous\s*Read[:\s]*(\d{1,2}/\d{1,2}/\d{2,4}).*?Current\s*Read[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})",
+        r"Current\s*Read[:\s]*(\d{1,2}/\d{1,2}/\d{2,4}).*?Previous\s*Read[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})",
+        # Meter read dates
+        r"Meter\s*Read\s*Dates?[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})\s*[-–to]+\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+        # Days in billing period with dates
+        r"(\d{1,2}/\d{1,2}/\d{2,4})\s*(?:thru|through|to)\s*(\d{1,2}/\d{1,2}/\d{2,4})",
     ]
     for pattern in period_patterns:
         match = re.search(pattern, raw_text, re.IGNORECASE)
@@ -807,96 +916,185 @@ def regex_extract_all_fields(raw_text):
             # Convert to ISO format (YYYY-MM-DD)
             result["billing_period_start"] = _normalize_date_to_iso(start_raw)
             result["billing_period_end"] = _normalize_date_to_iso(end_raw)
-            print(f"[regex_extract] billing_period: {start_raw} -> {result['billing_period_start']} to {end_raw} -> {result['billing_period_end']}")
-            break
+            if result["billing_period_start"] and result["billing_period_end"]:
+                print(f"[regex_extract] billing_period: {start_raw} -> {result['billing_period_start']} to {end_raw} -> {result['billing_period_end']}")
+                break
     
     # ========== DUE DATE ==========
+    # Universal patterns for payment due date
     due_patterns = [
-        r"Due\s*Date\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{4})",
+        # Standard due date labels
+        r"Due\s*Date\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{2,4})",
         r"Due\s*Date\s*[:\-]?\s*(\w+\s+\d{1,2},?\s+\d{4})",
-        r"Payment\s*Due\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{4})",
+        r"Payment\s*Due\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{2,4})",
         r"Payment\s*Due\s*[:\-]?\s*(\w+\s+\d{1,2},?\s+\d{4})",
-        r"Pay\s*By\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{4})",
-        r"DUE[:\s]+(\d{1,2}/\d{1,2}/\d{4})",
+        # Pay by
+        r"Pay\s*By\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+        r"Pay\s*By\s*[:\-]?\s*(\w+\s+\d{1,2},?\s+\d{4})",
+        # Please pay by
+        r"Please\s*Pay\s*By\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+        r"Please\s*Pay\s*By\s*[:\-]?\s*(\w+\s+\d{1,2},?\s+\d{4})",
+        # Due on
+        r"Due\s*[Oo]n\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+        r"Due\s*[Oo]n\s*[:\-]?\s*(\w+\s+\d{1,2},?\s+\d{4})",
+        # Auto payment date
+        r"AUTO\s*PAYMENT\s*[:\-]?\s*(\w+\s+\d{1,2},?\s+\d{4})",
+        r"Auto(?:matic)?\s*Payment\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+        # Amount Due by
+        r"Amount\s*Due\s*(?:By|On)\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+        # Bill Due
+        r"Bill\s*Due\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+        # Just DUE: date
+        r"\bDUE[:\s]+(\d{1,2}/\d{1,2}/\d{2,4})",
     ]
     for pattern in due_patterns:
         match = re.search(pattern, raw_text, re.IGNORECASE)
         if match:
             due_raw = match.group(1).strip()
             result["due_date"] = _normalize_date_to_iso(due_raw)
-            print(f"[regex_extract] due_date: {due_raw} -> {result['due_date']}")
-            break
+            if result["due_date"]:
+                print(f"[regex_extract] due_date: {due_raw} -> {result['due_date']}")
+                break
     
     # ========== TOTAL KWH (electric only) ==========
     if result["service_type"] in ("electric", "combined"):
         kwh_patterns = [
             # LADWP: "Electric Charges 10/24/25 - 11/26/25 81,920 kWh"
             r"Electric\s*Charges\s*\d{1,2}/\d{1,2}/\d{2,4}\s*[-–]\s*\d{1,2}/\d{1,2}/\d{2,4}\s*([\d,]+(?:\.\d+)?)\s*kWh",
-            # LADWP: "Total kWh Consumption" row in usage history "81,920.00"
+            # LADWP: "Total kWh Consumption"
             r"Total\s*kWh\s*Consumption[^\d]*([\d,]+(?:\.\d+)?)",
+            # Total Usage/kWh/Energy
             r"Total\s*(?:Usage|kWh|Energy)[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+            r"Total\s*(?:Usage|kWh|Energy)[:\s]*([\d,]+(?:\.\d+)?)\s*(?:kilowatt)",
+            # X kWh Total
             r"([\d,]+(?:\.\d+)?)\s*kWh\s*Total",
+            # Total kWh:
             r"Total\s*kWh[:\s]*([\d,]+(?:\.\d+)?)",
+            # Usage: X kWh
             r"Usage[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+            # kWh Used
             r"kWh\s*Used[:\s]*([\d,]+(?:\.\d+)?)",
+            # Energy Charges ... X kWh
             r"Energy\s*Charges.*?([\d,]+(?:\.\d+)?)\s*kWh",
+            # SCE: "Your usage this month" or "Total Usage"
+            r"Your\s*[Uu]sage\s*(?:this\s*month)?[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+            # Meter Reading shows kWh
+            r"Meter\s*Reading.*?([\d,]+(?:\.\d+)?)\s*kWh",
+            # Total Consumption
+            r"Total\s*Consumption[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+            # Electricity Used
+            r"Electricity\s*Used[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+            # kWh Delivered
+            r"kWh\s*Delivered[:\s]*([\d,]+(?:\.\d+)?)",
+            # Electric Delivery
+            r"Electric\s*Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+            # X kWh near "usage" or "used"
+            r"[Uu](?:sage|sed)[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+            # Standalone large number + kWh (careful - last resort)
+            r"\b([\d,]{3,}(?:\.\d+)?)\s*kWh\b",
         ]
         for pattern in kwh_patterns:
             match = re.search(pattern, raw_text, re.IGNORECASE)
             if match:
                 try:
                     kwh_str = match.group(1).replace(",", "")
-                    result["total_kwh"] = float(kwh_str)
-                    print(f"[regex_extract] total_kwh: {result['total_kwh']}")
-                    break
+                    kwh_val = float(kwh_str)
+                    # Sanity check - kWh should be reasonable (not a phone number, etc.)
+                    if kwh_val > 0 and kwh_val < 10000000:
+                        result["total_kwh"] = kwh_val
+                        print(f"[regex_extract] total_kwh: {result['total_kwh']}")
+                        break
                 except (ValueError, TypeError):
                     pass
     
     # ========== TOTAL AMOUNT ==========
+    # Universal patterns for total amount due
     amount_patterns = [
-        # LADWP: "Total Amount Due $ 22,462.77" (note space before $)
+        # LADWP: "Total Amount Due $ 22,462.77"
         r"Total\s*Amount\s*Due\s*\$\s*([\d,]+\.\d{2})",
+        # Amount Due (various formats)
         r"(?:Total\s*)?Amount\s*Due[:\s]*\$?\s*([\d,]+\.\d{2})",
+        r"Amount\s*(?:Now\s*)?Due[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # Total Due/Owed/Charges
         r"Total\s*(?:Due|Owed|Charges)[:\s]*\$?\s*([\d,]+\.\d{2})",
+        r"Total\s*Amount\s*(?:Owed|Payable)[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # Please Pay / Pay This Amount
         r"(?:Please\s*)?Pay\s*(?:This\s*)?Amount[:\s]*\$?\s*([\d,]+\.\d{2})",
-        r"New\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
-        r"Balance\s*Due[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # LADWP electric: "Total Electric Charges $ 22,462.77"
-        r"Total\s*Electric\s*Charges\s*\$\s*([\d,]+\.\d{2})",
+        r"Amount\s*(?:To\s*)?Pay[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # New Charges
+        r"(?:Total\s*)?New\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # Balance Due
+        r"(?:Total\s*)?Balance\s*Due[:\s]*\$?\s*([\d,]+\.\d{2})",
+        r"Balance\s*Forward[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # Current Charges
+        r"(?:Total\s*)?Current\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # Total Electric/Gas Charges
+        r"Total\s*Electric\s*Charges\s*\$?\s*([\d,]+\.\d{2})",
+        r"Total\s*Gas\s*Charges\s*\$?\s*([\d,]+\.\d{2})",
+        # SCE: "Total Amount You Owe"
+        r"Total\s*Amount\s*You\s*Owe[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # Your Bill / This Bill
+        r"(?:Your|This)\s*Bill[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # Pay Online amount
+        r"Pay\s*Online[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # Total Bill
+        r"Total\s*Bill[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # Statement Balance
+        r"Statement\s*Balance[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # Amount Enclosed
+        r"Amount\s*Enclosed[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # Generic $ amount after "total" or "due"
+        r"(?:total|due)[:\s]*\$\s*([\d,]+\.\d{2})",
     ]
     for pattern in amount_patterns:
         match = re.search(pattern, raw_text, re.IGNORECASE)
         if match:
             try:
                 amt_str = match.group(1).replace(",", "")
-                result["total_amount"] = float(amt_str)
-                print(f"[regex_extract] total_amount: {result['total_amount']}")
-                break
+                amt_val = float(amt_str)
+                # Sanity check - amount should be reasonable
+                if amt_val > 0 and amt_val < 10000000:
+                    result["total_amount"] = amt_val
+                    print(f"[regex_extract] total_amount: {result['total_amount']}")
+                    break
             except (ValueError, TypeError):
                 pass
     
     # ========== METER NUMBER ==========
+    # Universal patterns for meter identification
     meter_patterns = [
         # LADWP electric: Look for meter ID pattern like "APMYV00222-00027735" 
         r"(APM[A-Z0-9]{2,5}[\-][0-9\-]{8,15})",
-        # Generic meter with hyphens after METER NUMBER label (skip "SERVES")
-        r"METER\s*NUMBER[\s\S]{0,30}?([\dA-Z]{2,5}[\-][A-Z0-9\-]{8,20})",
+        # Generic meter with hyphens after METER NUMBER label
+        r"METER\s*(?:NUMBER|#|NO\.?|ID)[\s:]*[\s\S]{0,20}?([\dA-Z]{2,5}[\-][A-Z0-9\-]{6,20})",
         # Water meter: simple numeric like "96117765"
-        r"METER\s*NUMBER[:\s]+(\d{7,15})",
+        r"METER\s*(?:NUMBER|#|NO\.?|ID)[:\s]+(\d{6,15})",
         # Generic: "Meter #: 12345678" or "Meter No: 12345678"  
-        r"Meter\s*(?:#|No\.?|Number)[:\s]+([A-Z0-9\-]{6,20})",
-        r"Meter\s*ID[:\s]+([A-Z0-9\-]{6,20})",
+        r"Meter\s*(?:#|No\.?|Number|ID)[:\s]+([A-Z0-9\-]{5,20})",
+        # Service Point ID
+        r"Service\s*Point\s*(?:ID|#)?[:\s]*([A-Z0-9\-]{6,20})",
+        # Electric Meter
+        r"Electric\s*Meter[:\s]*([A-Z0-9\-]{5,20})",
+        # Meter Serial
+        r"Meter\s*Serial[:\s]*([A-Z0-9\-]{5,20})",
+        # SCE service account as meter (sometimes)
+        r"Service\s*Acct[:\s]*(\d[\-\d]{8,15})",
+        # Just "Meter" followed by alphanumeric
+        r"\bMeter[:\s]+([A-Z0-9]{6,15})\b",
     ]
     for pattern in meter_patterns:
         match = re.search(pattern, raw_text, re.IGNORECASE)
         if match:
             meter_val = match.group(1).strip()
-            # Skip if it's just "SERVES" (description, not meter ID)
-            if meter_val.upper() == "SERVES":
+            # Skip common non-meter values
+            skip_values = ["SERVES", "NUMBER", "READING", "READ", "TYPE", "LOCATION", "STATUS"]
+            if meter_val.upper() in skip_values:
                 continue
-            result["meter_number"] = meter_val
-            print(f"[regex_extract] meter_number: {result['meter_number']}")
-            break
+            # Must have at least some digits or specific format
+            if len(meter_val) >= 5 and (re.search(r'\d', meter_val) or '-' in meter_val):
+                result["meter_number"] = meter_val
+                print(f"[regex_extract] meter_number: {result['meter_number']}")
+                break
     
     # ========== TOU BREAKDOWN (for electric bills) ==========
     if result["service_type"] in ("electric", "combined"):
