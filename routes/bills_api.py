@@ -55,6 +55,66 @@ _bill_executor_lock = threading.Lock()
 _bill_executor: ThreadPoolExecutor | None = None
 
 
+def cleanup_old_progress_entries(max_age_s: int = 60 * 20) -> int:
+    """
+    Best-effort cleanup of in-memory `extraction_progress` entries.
+
+    This is intentionally conservative: entries are purely for UI progress and idempotency guards.
+    The DB remains the source of truth for terminal status.
+    """
+    import time
+
+    now = time.time()
+    removed = 0
+    with _extraction_progress_lock:
+        stale_keys = []
+        for k, v in extraction_progress.items():
+            try:
+                updated_at = float((v or {}).get("updated_at") or 0)
+            except Exception:
+                updated_at = 0
+            if updated_at and (now - updated_at) > max_age_s:
+                stale_keys.append(k)
+        for k in stale_keys:
+            extraction_progress.pop(k, None)
+            removed += 1
+    return removed
+
+
+def _build_error_payload(*, error_code: str, error_reason: str, error=None) -> dict:
+    """
+    Build a consistent, user-facing error payload for `extraction_payload`.
+
+    Notes:
+    - Keep this small and actionable; stack traces belong in logs only.
+    - `error` is retained for backward compatibility with existing UI code.
+    """
+    reason = (error_reason or "").strip() or "Unknown error"
+    return {
+        "success": False,
+        "error_code": error_code,
+        "error_reason": reason,
+        # Back-compat: UI currently reads payload.error in a few places.
+        "error": error or reason,
+    }
+
+
+def _persist_terminal_error(*, file_id: int, payload: dict) -> None:
+    """Best-effort: persist a terminal error state so UI shows a stable reason."""
+    try:
+        update_bill_file_extraction_payload(file_id, payload)
+    except Exception:
+        pass
+    try:
+        update_bill_file_review_status(file_id, "error")
+    except Exception:
+        pass
+    try:
+        update_bill_file_status(file_id, "error", processed=True)
+    except Exception:
+        pass
+
+
 def _get_bill_executor() -> ThreadPoolExecutor:
     global _bill_executor
     if _bill_executor is not None:
@@ -103,7 +163,7 @@ try:
         get_meter_reads_for_project, get_bills_summary_for_project, update_bill_file_status,
         upsert_utility_account, upsert_utility_meter, upsert_meter_read, get_grouped_bills_data,
         update_bill_file_review_status, update_bill_file_extraction_payload, 
-        get_files_status_for_project, get_bill_file_by_id,
+        get_files_status_for_project, get_bill_file_by_id, update_file_processing_status,
         add_bill_screenshot, get_bill_screenshots, delete_bill_screenshot, 
         get_screenshot_count, mark_bill_ok,
         save_correction, get_corrections_for_utility, validate_extraction,
@@ -142,17 +202,10 @@ def populate_normalized_tables(project_id, extraction_result, source_filename, f
     """
     Populate the normalized tables (utility_accounts, utility_meters, utility_meter_reads)
     from a successful extraction result.
-    Also saves to new bills and bill_tou_periods tables.
+    NOTE: save_bill_to_normalized_tables is already called by bill_extractor.py with _raw_text
+    for regex fallbacks. Don't call it again here as it would overwrite the correct status.
     """
     try:
-        # Also save to new normalized bills tables
-        if file_id:
-            try:
-                from bill_extractor import save_bill_to_normalized_tables
-                save_bill_to_normalized_tables(file_id, project_id, extraction_result)
-            except Exception as bills_err:
-                print(f"[bills] Warning: Error saving to new bills tables: {bills_err}")
-        
         utility_name = extraction_result.get('utility_name')
         account_number = extraction_result.get('account_number')
         meters = extraction_result.get('meters', [])
@@ -425,29 +478,20 @@ def _run_bill_extraction(project_id, file_id, file_path, original_filename):
             except Exception as hint_err:
                 print(f"[bills] Warning: Could not get training hints: {hint_err}")
         
-        # Store raw extraction result in extraction_payload
+        # Store raw extraction result in extraction_payload (ensure consistent error shape)
+        if not extraction_result.get("success"):
+            extraction_result.setdefault("error_code", "EXTRACTION_FAILED")
+            extraction_result.setdefault("error_reason", extraction_result.get("error") or "Extraction failed")
         update_bill_file_extraction_payload(file_id, extraction_result)
         
         if extraction_result.get('success'):
-            # Compute missing fields for tracking
-            missing_fields = compute_missing_fields(extraction_result)
-            
-            # Run validation to determine if 'ok' or 'needs_review'
-            validation = validate_extraction(extraction_result)
-            
-            if validation['is_valid'] and len(missing_fields) == 0:
-                review_status = 'ok'
-                print(f"[bills] Extraction valid - status 'ok'")
-            else:
-                review_status = 'needs_review'
-                all_missing = list(set(validation.get('missing_fields', []) + missing_fields))
-                print(f"[bills] Extraction needs review: {all_missing[:3]}...")
-            
-            update_bill_file_review_status(file_id, review_status)
-            update_bill_file_status(file_id, 'extracted', processed=True, missing_fields=missing_fields)
-            
-            # CRITICAL: Populate normalized tables so Extracted Data section shows data
+            # CRITICAL: Populate normalized tables - this also sets the final review_status
+            # based on actual extracted data (including regex fallbacks)
             populate_normalized_tables(project_id, extraction_result, original_filename, file_id=file_id)
+            
+            # Get the actual status that was set by persistence.py
+            file_record = get_bill_file_by_id(file_id)
+            review_status = file_record.get('review_status', 'ok') if file_record else 'ok'
             
             # Update progress to final status
             extraction_progress[file_id] = {
@@ -468,7 +512,7 @@ def _run_bill_extraction(project_id, file_id, file_path, original_filename):
             
             # Update progress to error status
             extraction_progress[file_id] = {
-                'status': 'needs_review',
+                'status': 'error',
                 'progress': 1.0,
                 'updated_at': time.time(),
                 'project_id': project_id
@@ -480,7 +524,10 @@ def _run_bill_extraction(project_id, file_id, file_path, original_filename):
         print(f"[bills] Background processing error for file {file_id}: {e}")
         import traceback
         traceback.print_exc()
-        update_bill_file_review_status(file_id, 'error')
+        _persist_terminal_error(
+            file_id=file_id,
+            payload=_build_error_payload(error_code="EXTRACTION_EXCEPTION", error_reason=str(e)),
+        )
         extraction_progress[file_id] = {
             'status': 'error',
             'progress': 1.0,
@@ -493,6 +540,7 @@ def _run_bill_extraction(project_id, file_id, file_path, original_filename):
 def process_bill_file(project_id, file_id):
     """Trigger extraction for a single bill file. Returns immediately, runs in background."""
     import time
+    import shutil
     
     if not BILLS_FEATURE_ENABLED:
         return jsonify({'error': 'Bills feature is disabled'}), 403
@@ -552,12 +600,41 @@ def process_bill_file(project_id, file_id):
         if not os.path.exists(file_path):
             return jsonify({'success': False, 'error': 'File not found on disk'}), 404
         
+        # Preflight: ensure AI provider is configured (both text + vision pipelines require xAI right now).
+        if not os.environ.get("XAI_API_KEY"):
+            payload = _build_error_payload(
+                error_code="CONFIG_XAI_API_KEY_MISSING",
+                error_reason="Server is missing XAI_API_KEY. Add it to .env/local.env and restart the server.",
+            )
+            _persist_terminal_error(file_id=file_id, payload=payload)
+            return jsonify({"success": False, "error": payload["error_reason"], "error_code": payload["error_code"]}), 503
+
         # Set status to processing first
         update_bill_file_review_status(file_id, 'processing')
+        # Also update processing_status so all UI surfaces agree (and polling can work after restarts).
+        try:
+            update_file_processing_status(file_id, "processing")
+        except Exception:
+            pass
         
         # Check extraction method - default to 'text' (new pipeline), 'vision' for legacy
         extraction_method = request.args.get('method', 'text')
         use_text_extraction = extraction_method == 'text'
+
+        # Smart fallback: if PDF is scanned and OCR tooling isn't installed, use vision pipeline automatically.
+        # This prevents "processing forever" on machines without `tesseract`.
+        try:
+            if use_text_extraction and file_path.lower().endswith(".pdf"):
+                from bills import NormalizationService
+                normalizer = NormalizationService()
+                detected = normalizer.detect_file_type(file_path)
+                has_tesseract = shutil.which("tesseract") is not None
+                if detected == "pdf_scanned" and not has_tesseract:
+                    print(f"[bills] PDF appears scanned and tesseract is missing; falling back to vision extraction for file {file_id}")
+                    use_text_extraction = False
+        except Exception:
+            # Never block processing due to detection issues.
+            pass
         
         if use_text_extraction:
             # Use new text-based extraction with JobQueue
@@ -577,11 +654,17 @@ def process_bill_file(project_id, file_id):
                 })
             
             # Define completion callback
+            # NOTE: Status is set by save_bill_to_normalized_tables based on actual data present
+            # Don't override here - just handle errors
             def on_extraction_complete(fid, result):
-                if result.get('success', True):
-                    update_bill_file_review_status(fid, 'ok' if result.get('confidence', 0) > 0.7 else 'needs_review')
-                else:
-                    update_bill_file_review_status(fid, 'error')
+                try:
+                    if not result.get('success', True):
+                        # Only set status on failure - success status is set by persistence.py
+                        update_bill_file_extraction_payload(fid, result)
+                        update_bill_file_review_status(fid, 'error')
+                        update_bill_file_status(fid, 'failed', processed=True)
+                except Exception as cb_err:
+                    print(f"[bills] Warning: on_extraction_complete failed: {cb_err}")
             
             # Submit to JobQueue
             submitted = job_queue.submit(
@@ -629,7 +712,10 @@ def process_bill_file(project_id, file_id):
                     'updated_at': time.time(),
                     'project_id': project_id
                 }
-                update_bill_file_review_status(file_id, 'error')
+                _persist_terminal_error(
+                    file_id=file_id,
+                    payload=_build_error_payload(error_code="QUEUE_FAILED", error_reason=str(submit_err)),
+                )
                 return jsonify({'success': False, 'error': f'Failed to start processing: {submit_err}'}), 500
             
             return jsonify({
@@ -651,10 +737,10 @@ def process_bill_file(project_id, file_id):
             'updated_at': time.time(),
             'project_id': project_id
         }
-        try:
-            update_bill_file_review_status(file_id, 'error')
-        except:
-            pass
+        _persist_terminal_error(
+            file_id=file_id,
+            payload=_build_error_payload(error_code="PROCESS_ENDPOINT_EXCEPTION", error_reason=str(e)),
+        )
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -703,15 +789,77 @@ def get_bill_processing_status(file_id):
     status = job_queue.get_status_dict(file_id)
     
     if status:
+        # If job is done, merge in the actual review_status from DB
+        # (save_bill_to_normalized_tables sets review_status based on actual data)
+        if status.get('state') in ('done', 'complete', 'cached_hit'):
+            file_record = get_bill_file_by_id(file_id)
+            if file_record:
+                db_review_status = file_record.get('review_status') or file_record.get('processing_status')
+                if db_review_status:
+                    status['state'] = db_review_status
+                    status['review_status'] = db_review_status
         return jsonify({'success': True, **status})
     
     file_record = get_bill_file_by_id(file_id)
     if file_record:
+        # Reconcile inconsistent states (common after restarts or older pipeline versions):
+        # - review_status='error' but processing_status still pending/processing -> treat as terminal error
+        # - processing_status stuck in pending/processing with no JobQueue entry -> mark as error after timeout
+        review_status = file_record.get("review_status") or "pending"
+        processing_status = file_record.get("processing_status") or "pending"
+        processed = bool(file_record.get("processed"))
+        payload = file_record.get("extraction_payload") or {}
+
+        # If review says error, force processing to a terminal error state so UI stops polling.
+        if review_status == "error" and processing_status in ("pending", "processing", "extracting"):
+            try:
+                update_bill_file_status(file_id, "error", processed=True)
+            except Exception:
+                pass
+            processing_status = "error"
+            processed = True
+
+        # Watchdog: if stuck and no job exists, mark as error after 10 minutes.
+        try:
+            upload_date = file_record.get("upload_date")
+            if (
+                processing_status in ("pending", "processing", "extracting")
+                and not processed
+                and upload_date is not None
+            ):
+                from datetime import datetime, timezone
+                age_s = (datetime.now(timezone.utc) - upload_date.replace(tzinfo=timezone.utc)).total_seconds()
+                if age_s > 600:
+                    err_payload = payload or {"success": False, "error": "Processing timed out (server restart or worker error). Please retry."}
+                    try:
+                        update_bill_file_extraction_payload(file_id, err_payload)
+                    except Exception:
+                        pass
+                    try:
+                        update_bill_file_review_status(file_id, "error")
+                    except Exception:
+                        pass
+                    try:
+                        update_bill_file_status(file_id, "error", processed=True)
+                    except Exception:
+                        pass
+                    processing_status = "error"
+                    processed = True
+        except Exception:
+            pass
+
+        state = processing_status
+        if review_status in ("ok", "needs_review", "approved"):
+            state = review_status
+        elif review_status == "error":
+            state = "error"
+
         return jsonify({
             'success': True,
             'file_id': file_id,
-            'state': file_record.get('processing_status', 'unknown'),
-            'progress': 1.0 if file_record.get('processed') else 0.0
+            'state': state,
+            'progress': 1.0 if processed else 0.0,
+            'error': (payload.get("error") if isinstance(payload, dict) else None)
         })
     
     return jsonify({'success': False, 'error': 'File not found'}), 404

@@ -115,6 +115,11 @@ def recompute_bill_file_missing_fields(bill_file_id):
     """
     Recompute missing fields for a bill file based on current bill data.
     Updates the utility_bill_files record with new missing_fields and review_status.
+
+    Fields are grouped into:
+    - CORE: required for review_status to become 'ok' (utility_name, period_end, total_amount_due).
+    - CONTEXT: nice-to-have and still reported as missing, but don't block 'ok' status
+      (service_address, rate_schedule, meter_number, period_start, total_kwh).
     """
     conn = get_connection()
     try:
@@ -137,30 +142,38 @@ def recompute_bill_file_missing_fields(bill_file_id):
             if not bills:
                 return ["no_bills_for_file"]
 
-            missing = []
+            # Group into core (blocks ok) and context (warning only)
+            core_missing = set()
+            context_missing = set()
             first_bill = bills[0]
+
             if not first_bill.get("utility_name"):
-                missing.append("utility_name")
+                core_missing.add("utility_name")
+
+            # Context fields
             if not first_bill.get("rate_schedule"):
-                missing.append("rate_schedule")
+                context_missing.add("rate_schedule")
 
             for bill in bills:
-                if bill.get("total_kwh") is None:
-                    missing.append("total_kwh")
                 if bill.get("total_amount_due") is None:
-                    missing.append("total_amount_due")
-                if not bill.get("period_start"):
-                    missing.append("period_start")
+                    core_missing.add("total_amount_due")
                 if not bill.get("period_end"):
-                    missing.append("period_end")
+                    core_missing.add("period_end")
+
+                # Context - nice-to-have
+                if bill.get("total_kwh") is None:
+                    context_missing.add("total_kwh")
+                if not bill.get("period_start"):
+                    context_missing.add("period_start")
                 if not bill.get("meter_number"):
-                    missing.append("meter_number")
+                    context_missing.add("meter_number")
                 if not bill.get("service_address"):
-                    missing.append("service_address")
+                    context_missing.add("service_address")
 
-            missing = list(set(missing))
+            missing = list(core_missing | context_missing)
 
-            review_status = "needs_review" if missing else "ok"
+            # Only core fields block 'ok'
+            review_status = "needs_review" if core_missing else "ok"
             cur.execute(
                 """
                 UPDATE utility_bill_files

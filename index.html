@@ -2236,7 +2236,7 @@
         }
         .bill-usage-summary {
             display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 0.6rem;
             margin-bottom: 0.5rem;
         }
@@ -2302,16 +2302,33 @@
             }
         }
         
+        .bills-status-complete {
+            color: #1e5a99;
+            font-weight: 600;
+        }
         .bills-status-ok {
             color: #28a745;
+            font-weight: 500;
+        }
+        .bills-status-needs_review {
+            color: #ffc107;
+            font-weight: 500;
+        }
+        .bills-status-error {
+            color: #dc3545;
             font-weight: 500;
         }
         .bills-status-review {
             color: #dc3545;
             font-weight: 500;
         }
+        .bills-status-skipped {
+            color: #6c757d;
+            font-weight: 400;
+            font-style: italic;
+        }
         .bills-status-pending {
-            color: #ffc107;
+            color: #6c757d;
             font-weight: 500;
         }
         
@@ -2395,11 +2412,17 @@
         .bill-upload-item .progress-bar-fill.extracting {
             background: linear-gradient(135deg, #1e5a99 0%, #2d7bb8 100%);
         }
+        .bill-upload-item .progress-bar-fill.complete {
+            background: #1e5a99;
+        }
         .bill-upload-item .progress-bar-fill.ok {
             background: #28a745;
         }
         .bill-upload-item .progress-bar-fill.needs-review {
             background: #ffc107;
+        }
+        .bill-upload-item .progress-bar-fill.skipped {
+            background: #adb5bd;
         }
         .bill-upload-item .progress-bar-fill.pending {
             background: #adb5bd;
@@ -2415,11 +2438,19 @@
             min-width: 90px;
             text-align: right;
         }
+        .bill-upload-item .progress-text.complete {
+            color: #1e5a99;
+            font-weight: 600;
+        }
         .bill-upload-item .progress-text.ok {
             color: #28a745;
         }
         .bill-upload-item .progress-text.needs-review {
             color: #ffc107;
+        }
+        .bill-upload-item .progress-text.skipped {
+            color: #6c757d;
+            font-style: italic;
         }
         
         /* Status label styles */
@@ -2745,11 +2776,19 @@
         }
         .embedded-bill-file-row .progress-fill.complete {
             width: 100%;
+            background: #1e5a99;
+        }
+        .embedded-bill-file-row .progress-fill.ok {
+            width: 100%;
             background: #28a745;
         }
         .embedded-bill-file-row .progress-fill.needs-review {
             width: 100%;
             background: #ffc107;
+        }
+        .embedded-bill-file-row .progress-fill.skipped {
+            width: 100%;
+            background: #adb5bd;
         }
         .embedded-bill-file-row .progress-fill.error {
             width: 100%;
@@ -2766,8 +2805,10 @@
         }
         .embedded-bill-file-row .progress-text.waiting { color: #6c757d; }
         .embedded-bill-file-row .progress-text.processing { color: #1e5a99; }
-        .embedded-bill-file-row .progress-text.complete { color: #28a745; }
-        .embedded-bill-file-row .progress-text.needs-review { color: #856404; }
+        .embedded-bill-file-row .progress-text.complete { color: #1e5a99; font-weight: 600; }
+        .embedded-bill-file-row .progress-text.ok { color: #28a745; }
+        .embedded-bill-file-row .progress-text.skipped { color: #6c757d; font-style: italic; }
+        .embedded-bill-file-row .progress-text.needs-review { color: #ffc107; }
         .embedded-bill-file-row .progress-text.error { color: #dc3545; }
         .embedded-bill-file-row .embedded-file-view-btn,
         .embedded-bill-file-row .embedded-file-delete-btn {
@@ -3001,6 +3042,10 @@
             transition: width 0.3s ease;
         }
         .file-progress-bar .progress-fill.complete {
+            background: #1e5a99;
+            width: 100%;
+        }
+        .file-progress-bar .progress-fill.ok {
             background: #28a745;
             width: 100%;
         }
@@ -3022,16 +3067,22 @@
             background: #ffc107;
             width: 100%;
         }
+        .file-progress-bar .progress-fill.skipped {
+            background: #adb5bd;
+            width: 100%;
+        }
         .file-progress-bar .progress-text {
             font-size: 0.8rem;
             white-space: nowrap;
             min-width: 80px;
         }
-        .file-progress-bar .progress-text.complete { color: #28a745; }
+        .file-progress-bar .progress-text.complete { color: #1e5a99; font-weight: 600; }
+        .file-progress-bar .progress-text.ok { color: #28a745; }
+        .file-progress-bar .progress-text.skipped { color: #6c757d; font-style: italic; }
         .file-progress-bar .progress-text.waiting { color: #6c757d; }
         .file-progress-bar .progress-text.processing { color: #2196f3; }
         .file-progress-bar .progress-text.error { color: #dc3545; }
-        .file-progress-bar .progress-text.needs-review { color: #d39e00; }
+        .file-progress-bar .progress-text.needs-review { color: #ffc107; }
         
         @keyframes progress-pulse {
             0%, 100% { opacity: 0.6; }
@@ -5529,11 +5580,11 @@
                 return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             
             case 'kwh':
-                // kWh: Integer with commas (unless fractional, then 1 decimal)
+                // kWh: Integer with commas (unless fractional, then 1 decimal) + " kWh" suffix
                 if (num % 1 === 0) {
-                    return Math.round(num).toLocaleString('en-US');
+                    return Math.round(num).toLocaleString('en-US') + ' kWh';
                 } else {
-                    return num.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+                    return num.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' kWh';
                 }
             
             default:
@@ -5562,6 +5613,26 @@
             console.log(`[BILL_DEBUG] ${fieldName}: "${value}" from ${source}`);
         }
         return value;
+    }
+    
+    // Compute days using provided value, falling back to start/end dates if missing
+    function computeDaysInPeriod(providedDays, startDate, endDate) {
+        const parsed = providedDays != null ? Number(providedDays) : null;
+        if (parsed && !Number.isNaN(parsed) && parsed > 0) {
+            return parsed;
+        }
+        if (startDate && endDate) {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            if (!isNaN(start) && !isNaN(end)) {
+                const diffMs = end.getTime() - start.getTime();
+                const days = Math.round(diffMs / (1000 * 60 * 60 * 24));
+                if (days > 0) {
+                    return days;
+                }
+            }
+        }
+        return null;
     }
     
     (function() {
@@ -7828,13 +7899,15 @@
             },
             
             // Get status class and icon for file status
-            getStatusDisplay(status) {
+            getStatusDisplay(status, serviceType = null) {
                 const statusMap = {
                     'pending': { class: 'bills-status-pending', icon: '⏳', label: 'pending' },
                     'processing': { class: 'bills-status-processing', icon: '', label: 'processing' },
-                    'needs_review': { class: 'bills-status-needs_review', icon: '⚠️', label: 'needs review' },
+                    'complete': { class: 'bills-status-complete', icon: '✓', label: 'complete' },
                     'ok': { class: 'bills-status-ok', icon: '✓', label: 'ok' },
                     'approved': { class: 'bills-status-ok', icon: '✓', label: 'ok' },
+                    'needs_review': { class: 'bills-status-needs_review', icon: '⚠️', label: 'needs review' },
+                    'skipped': { class: 'bills-status-skipped', icon: '○', label: serviceType ? serviceType.charAt(0).toUpperCase() + serviceType.slice(1) : 'Non-Electric' },
                     'error': { class: 'bills-status-error', icon: '✗', label: 'error' },
                     'failed': { class: 'bills-status-error', icon: '✗', label: 'failed' }
                 };
@@ -7867,7 +7940,8 @@
                     const d = f.upload_date ? new Date(f.upload_date) : null;
                     const date = d ? `${d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })} • ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}` : '';
                     const reviewStatus = f.review_status || f.processing_status || 'pending';
-                    const statusDisplay = this.getStatusDisplay(reviewStatus);
+                    const serviceType = f.service_type || (f.extraction_payload ? f.extraction_payload.service_type : null);
+                    const statusDisplay = this.getStatusDisplay(reviewStatus, serviceType);
                     const isNeedsReview = reviewStatus === 'needs_review';
                     const clickableClass = isNeedsReview ? ' clickable' : '';
                     const statusHtml = isNeedsReview 
@@ -8170,7 +8244,7 @@
             },
             
             renderBillDetailCard(bill) {
-                const days = bill.daysInPeriod || 0;
+                const days = computeDaysInPeriod(bill.daysInPeriod, bill.periodStart, bill.periodEnd) ?? 0;
                 const tou = bill.tou || {};
                 const charges = bill.charges || {};
                 const energyCharges = charges.energyCharges || 0;
@@ -8339,9 +8413,6 @@
                     // Usage Summary Section
                     detailedHtml += this.renderUsageSummarySection(d);
                     
-                    // Charges Breakdown Section
-                    detailedHtml += this.renderChargesSection(d);
-                    
                     // TOU Rate Table
                     if (d.kwh_on_peak || d.kwh_mid_peak || d.kwh_off_peak) {
                         detailedHtml += this.renderTouSection(d);
@@ -8374,9 +8445,12 @@
             },
             
             renderBillSummarySection(d) {
-                const periodStart = d.billing_period_start ? new Date(d.billing_period_start).toLocaleDateString() : '-';
-                const periodEnd = d.billing_period_end ? new Date(d.billing_period_end).toLocaleDateString() : '-';
+                const rawPeriodStart = d.billing_period_start;
+                const rawPeriodEnd = d.billing_period_end;
+                const periodStart = rawPeriodStart ? new Date(rawPeriodStart).toLocaleDateString() : '-';
+                const periodEnd = rawPeriodEnd ? new Date(rawPeriodEnd).toLocaleDateString() : '-';
                 const dueDate = d.due_date ? new Date(d.due_date).toLocaleDateString() : '-';
+                const computedDays = computeDaysInPeriod(d.days_in_period, rawPeriodStart, rawPeriodEnd);
                 
                 return `
                     <div class="bill-detail-section">
@@ -8391,16 +8465,12 @@
                                     <span>${d.service_address || '-'}</span>
                                 </div>
                                 <div class="bill-summary-item">
-                                    <label>POD-ID</label>
-                                    <span>${d.pod_id || '-'}</span>
-                                </div>
-                                <div class="bill-summary-item">
                                     <label>Rate Schedule</label>
                                     <span>${d.rate_schedule || d.rate || '-'}</span>
                                 </div>
                                 <div class="bill-summary-item">
                                     <label>Billing Period</label>
-                                    <span>${periodStart} - ${periodEnd} (${d.days_in_period || '-'} days)</span>
+                                    <span>${periodStart} - ${periodEnd} (${computedDays ?? '-'} days)</span>
                                 </div>
                                 <div class="bill-summary-item highlight">
                                     <label>Amount Due</label>
@@ -8422,7 +8492,7 @@
                 
                 // Calculate blended rate and avg cost per day
                 const totalKwh = d.kwh_total != null ? Number(d.kwh_total) : null;
-                const daysInPeriod = d.days_in_period != null ? Number(d.days_in_period) : null;
+                const daysInPeriod = computeDaysInPeriod(d.days_in_period, d.billing_period_start, d.billing_period_end);
                 const amountDue = d.amount_due != null ? Number(d.amount_due) : null;
                 const blendedRateDollars = (totalKwh && amountDue && totalKwh > 0) ? amountDue / totalKwh : null;
                 const avgCostPerDay = (amountDue != null && daysInPeriod && daysInPeriod > 0) ? amountDue / daysInPeriod : null;
@@ -8945,9 +9015,10 @@
                 'parsing_pass_a': 'AI parsing (quick)...',
                 'parsing_pass_b': 'AI parsing (detailed)...',
                 'done': '✓ Complete',
-                'failed': '✗ Failed',
-                'ok': '✓ Complete',
+                'complete': '✓ Complete',
+                'ok': '✓ OK',
                 'needs_review': '⚠ Needs Review',
+                'failed': '✗ Failed',
                 'error': '✗ Analysis failed',
                 'pending': 'Pending...',
                 'extracting': 'Analyzing...',
@@ -8967,8 +9038,10 @@
                 
                 // Map granular states to display categories
                 const processingStates = ['queued', 'extracting_text', 'ocr', 'cleaning', 'parsing_pass_a', 'parsing_pass_b', 'extracting', 'processing'];
-                const successStates = ['done', 'ok', 'cached_hit'];
+                const completeStates = ['complete', 'done', 'cached_hit'];
+                const okStates = ['ok'];
                 const reviewStates = ['needs_review'];
+                const skippedStates = ['skipped'];
                 const errorStates = ['failed', 'error'];
                 
                 if (status === 'pending') {
@@ -8976,31 +9049,46 @@
                     progressFill.style.width = '100%';
                     progressText.textContent = text || this.STATE_LABELS[status] || 'Pending...';
                 } else if (status === 'cached_hit') {
-                    // Cache hit - show special fast completion
-                    progressFill.classList.add('ok');
+                    // Cache hit - show special fast completion (blue)
+                    progressFill.classList.add('complete');
                     progressFill.style.width = '100%';
-                    progressText.classList.add('ok');
+                    progressText.classList.add('complete');
                     progressText.textContent = '⚡ Cached (instant)';
                 } else if (processingStates.includes(status)) {
                     progressFill.classList.add('extracting');
                     progressFill.style.width = Math.round(progress * 100) + '%';
                     const label = this.STATE_LABELS[status] || 'Processing...';
                     progressText.textContent = text || `${label} ${Math.round(progress * 100)}%`;
-                } else if (successStates.includes(status)) {
+                } else if (completeStates.includes(status)) {
+                    // Blue - perfect extraction, all fields present
+                    progressFill.classList.add('complete');
+                    progressFill.style.width = '100%';
+                    progressText.classList.add('complete');
+                    progressText.textContent = text || '✓ Complete';
+                } else if (okStates.includes(status)) {
+                    // Green - critical data present, some non-critical missing
                     progressFill.classList.add('ok');
                     progressFill.style.width = '100%';
                     progressText.classList.add('ok');
-                    progressText.textContent = text || '✓ Complete';
+                    progressText.textContent = text || '✓ OK';
                 } else if (reviewStates.includes(status)) {
+                    // Yellow - missing critical info
                     progressFill.classList.add('needs-review');
                     progressFill.style.width = '100%';
                     progressText.classList.add('needs-review');
                     progressText.textContent = '⚠ Needs Review';
                 } else if (errorStates.includes(status)) {
+                    // Red - failed
                     progressFill.style.background = '#dc3545';
                     progressFill.style.width = '100%';
                     progressText.style.color = '#dc3545';
-                    progressText.textContent = text || '✗ Analysis failed';
+                    progressText.textContent = text || '✗ Failed';
+                } else if (skippedStates.includes(status)) {
+                    // Gray - non-electric bill (water, trash, etc)
+                    progressFill.classList.add('skipped');
+                    progressFill.style.width = '100%';
+                    progressText.classList.add('skipped');
+                    progressText.textContent = text || '○ Non-Electric';
                 } else {
                     // Unknown status - show as processing
                     progressFill.classList.add('extracting');
@@ -9034,7 +9122,7 @@
                         const errorMsg = data.error || data.message || null;
                         
                         // Terminal states for stopping polling (includes cached_hit as it's a fast success)
-                        const terminalStates = ['done', 'failed', 'ok', 'needs_review', 'error', 'cached_hit'];
+                        const terminalStates = ['done', 'failed', 'ok', 'complete', 'needs_review', 'skipped', 'error', 'cached_hit'];
                         // Processing states for "still working" message
                         const processingStates = ['queued', 'extracting_text', 'ocr', 'cleaning', 'parsing_pass_a', 'parsing_pass_b', 'extracting', 'processing'];
                         
@@ -9076,7 +9164,7 @@
                             const progress = fallbackData.progress || 0;
                             this.updateFileItemStatus(itemElement, status, progress, null);
                             
-                            if (['ok', 'needs_review', 'error'].includes(status)) {
+                            if (['ok', 'complete', 'needs_review', 'skipped', 'error'].includes(status)) {
                                 clearInterval(this._filePollers[fileId]);
                                 delete this._filePollers[fileId];
                                 delete this._filePollerStartTimes[fileId];
@@ -9541,14 +9629,13 @@
                 const cleanName = this.cleanFilename(file.original_filename);
                 const size = file.file_size ? `${(file.file_size / 1024).toFixed(1)} KB` : 'Unknown size';
                 const date = file.upload_date ? new Date(file.upload_date).toLocaleString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true }) : 'Unknown date';
-                const statusDisplay = this.getStatusDisplay(file.review_status || file.processing_status);
+                const reviewStatus = file.review_status || file.processing_status;
+                const serviceType = file.service_type || (file.extraction_payload ? file.extraction_payload.service_type : null);
+                const statusDisplay = this.getStatusDisplay(reviewStatus, serviceType);
                 
                 // Render Missing Fields Panel (from validation data)
                 const validation = file.validation || {};
                 const missingFields = validation.missing_fields || [];
-                
-                // Check if status is needs_review and show reasons
-                const reviewStatus = file.review_status || file.processing_status;
                 const needsReviewReasons = file.needs_review_reasons || [];
                 
                 if (missingFieldsEl) {
@@ -9634,9 +9721,28 @@
                 const processingStatus = file.processing_status || '';
                 const isExtractionFailed = processingStatus === 'failed' || processingStatus === 'error';
                 
-                // Get error message if available
+                // Get error message if available (prefer structured fields)
                 const payload = file.extraction_payload;
-                const errorMessage = payload?.error || file.error || null;
+                const errorCode = payload?.error_code || payload?.errorCode || null;
+                const errorReason = payload?.error_reason || payload?.errorReason || payload?.error || file.error || null;
+                
+                const formatErrorHelp = (code, reason) => {
+                    if (code === 'CONFIG_XAI_API_KEY_MISSING') {
+                        return `${reason || 'Missing XAI_API_KEY.'} Add \`XAI_API_KEY=...\` to your .env/local.env and restart the server.`;
+                    }
+                    if (code === 'QUEUE_FAILED') {
+                        return `${reason || 'Failed to start extraction.'} Try again; if it keeps happening, restart the server and check logs.`;
+                    }
+                    if (code === 'PROCESS_ENDPOINT_EXCEPTION') {
+                        return `${reason || 'Server error starting extraction.'} Check server logs for details.`;
+                    }
+                    if (code === 'EXTRACTION_EXCEPTION') {
+                        return `${reason || 'Extraction crashed.'} Check server logs; you can still proceed by uploading annotated screenshots or using Edit.`;
+                    }
+                    return reason || null;
+                };
+                
+                const errorMessage = formatErrorHelp(errorCode, errorReason);
                 
                 // Show prominent error message for failed extractions
                 if (isExtractionFailed || (!payload && processingStatus !== 'pending' && processingStatus !== 'processing')) {
@@ -9646,7 +9752,7 @@
                                 ✗ Extraction Failed
                             </div>
                             <p style="color: #7f1d1d; margin: 0;">
-                                ${errorMessage ? `<strong>Reason:</strong> ${errorMessage}` : 'AI extraction could not process this bill. Please upload annotated screenshots or manually enter the data using the Edit button.'}
+                                ${errorMessage ? `<strong>Reason:</strong> ${errorMessage}${errorCode ? ` <span style="opacity:0.7;">(code: ${errorCode})</span>` : ''}` : 'AI extraction could not process this bill. Please upload annotated screenshots or manually enter the data using the Edit button.'}
                             </p>
                         </div>
                     `;
@@ -9666,7 +9772,13 @@
                 }
                 
                 // Check for empty payload (pending/processing state or no data)
-                if (!payload || ((!payload.accounts || payload.accounts.length === 0) && (!payload.meters || payload.meters.length === 0))) {
+                // IMPORTANT: Don't bail out if detailed_data exists - we can still show analysis even without accounts/meters
+                const hasAccounts = payload?.accounts && payload.accounts.length > 0;
+                const hasMeters = payload?.meters && payload.meters.length > 0;
+                const hasDetailedData = payload?.detailed_data && Object.keys(payload.detailed_data).length > 0;
+                const hasAnyRenderableData = hasAccounts || hasMeters || hasDetailedData || payload?.utility_name || payload?.account_number;
+                
+                if (!payload || !hasAnyRenderableData) {
                     if (processingStatus === 'pending' || processingStatus === 'processing') {
                         dataEl.innerHTML = '<p style="color:#666;font-style:italic;">Bill is still being processed. Please wait...</p>';
                     } else {
@@ -9676,6 +9788,28 @@
                 }
                 
                 let html = '';
+                
+                // Show a non-blocking warning banner if review_status is needs_review
+                // This replaces the "hostage" pattern - data is shown, user can review/edit, warning is informational.
+                const reviewSt = file.review_status || file.processing_status || '';
+                if (reviewSt === 'needs_review' && !this._isEditMode) {
+                    const mf = file.validation?.missing_fields || [];
+                    const contextFields = mf.filter(f => {
+                        const fname = (typeof f === 'string' ? f : f.field || '').toLowerCase();
+                        return ['service_address', 'rate_schedule', 'meter_number'].some(c => fname.includes(c));
+                    });
+                    const coreFields = mf.filter(f => !contextFields.includes(f));
+                    
+                    if (coreFields.length > 0 || contextFields.length > 0) {
+                        html += `<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:0.75rem;margin-bottom:1rem;">
+                            <strong style="color:#856404;">⚠️ Some fields need attention</strong>
+                            <p style="margin:0.5rem 0 0 0;font-size:0.9rem;color:#856404;">
+                                ${coreFields.length > 0 ? `<b>Required:</b> ${coreFields.map(f => typeof f === 'string' ? f.replace(/_/g,' ') : f.label).join(', ')}<br>` : ''}
+                                ${contextFields.length > 0 ? `<span style="opacity:0.85">Optional context: ${contextFields.map(f => typeof f === 'string' ? f.replace(/_/g,' ') : f.label).join(', ')}</span>` : ''}
+                            </p>
+                        </div>`;
+                    }
+                }
                 
                 // Handle accounts/meters structure
                 const accounts = payload.accounts || [{ account_number: payload.account_number || '', utility_name: payload.utility_name || '', meters: payload.meters || [] }];
@@ -9740,15 +9874,18 @@
                 }
                 html += '</div></div>';
                 
-                // Render meters
+                // Render meters (or show a notice if no meters but we have detailed_data)
+                let hasAnyMeters = false;
                 for (let acctIdx = 0; acctIdx < accounts.length; acctIdx++) {
                     const account = accounts[acctIdx];
                     const meters = account.meters || [];
+                    if (meters.length > 0) hasAnyMeters = true;
                     
                     for (let meterIdx = 0; meterIdx < meters.length; meterIdx++) {
                         const meter = meters[meterIdx];
                         const meterNumber = meter.meter_number || '';
-                        const serviceAddress = meter.service_address || '';
+                        // Fall back to bill-level service_address if meter doesn't have one
+                        const serviceAddress = meter.service_address || detailedData.service_address || '';
                         
                         html += `<div class="bill-meter-card">`;
                         html += `<h5>📟 Meter ${meterIdx + 1}</h5>`;
@@ -9843,12 +9980,20 @@
                     }
                 }
                 
-                // Add detailed data sections if available (not in edit mode)
-                if (!this._isEditMode) {
-                    const detailedData = payload.detailed_data || {};
-                    if (detailedData && Object.keys(detailedData).length > 0) {
-                        html += this.renderReviewDetailedSections(detailedData);
-                    }
+                // If no meters found but we have detailed_data, show helpful notice
+                if (!hasAnyMeters && detailedData && Object.keys(detailedData).length > 0) {
+                    html += `<div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:6px;padding:0.75rem;margin:1rem 0;color:#0d47a1;">
+                        <strong>ℹ️ Meter data not extracted</strong>
+                        <p style="margin:0.25rem 0 0 0;font-size:0.9rem;">
+                            Individual meter reads weren't extracted for this bill, but we have billing summary data below.
+                            You can use Edit mode to add meter details if needed.
+                        </p>
+                    </div>`;
+                }
+                
+                // Add detailed data sections if available (keep visible even in edit mode so users can confirm fixes)
+                if (detailedData && Object.keys(detailedData).length > 0) {
+                    html += this.renderReviewDetailedSections(detailedData);
                 }
                 
                 dataEl.innerHTML = html;
@@ -9861,6 +10006,24 @@
                         if (content) content.classList.toggle('collapsed');
                     });
                 });
+
+                // UX: clear red "missing" styling as soon as user types a value (then validation can re-apply on save if needed).
+                const clearMissing = (target) => {
+                    if (!target || !target.matches) return;
+                    if (!target.matches('input, textarea, select')) return;
+                    const val = (target.value || '').toString().trim();
+                    if (!val) return;
+                    target.classList.remove('field-missing');
+                    const parentMissing = target.closest('.field-missing');
+                    if (parentMissing) parentMissing.classList.remove('field-missing');
+                };
+                if (this._isEditMode) {
+                    dataEl.oninput = (e) => clearMissing(e.target);
+                    dataEl.onchange = (e) => clearMissing(e.target);
+                } else {
+                    dataEl.oninput = null;
+                    dataEl.onchange = null;
+                }
                 
                 // Update button visibility
                 if (saveBtn) saveBtn.style.display = this._isEditMode ? 'inline-block' : 'none';
@@ -9871,11 +10034,15 @@
                 let html = '<div class="bill-review-detailed" style="margin-top: 1.25rem;">';
                 html += '<h5 style="margin-bottom: 0.75rem; color: #1e5a99; border-bottom: 1px solid #e0e0e0; padding-bottom: 0.5rem;">📊 Detailed Extraction Data</h5>';
                 
-                // Bill Summary
-                const periodStart = d.billing_period_start ? new Date(d.billing_period_start).toLocaleDateString() : '-';
-                const periodEnd = d.billing_period_end ? new Date(d.billing_period_end).toLocaleDateString() : '-';
+                // Bill Summary - with fallback field names for different data sources
+                const periodStartRaw = d.billing_period_start || d.period_start;
+                const periodEndRaw = d.billing_period_end || d.period_end;
+                const periodStart = periodStartRaw ? new Date(periodStartRaw).toLocaleDateString() : '-';
+                const periodEnd = periodEndRaw ? new Date(periodEndRaw).toLocaleDateString() : '-';
                 const dueDate = d.due_date ? new Date(d.due_date).toLocaleDateString() : '-';
+                const amountDueVal = d.amount_due ?? d.total_amount_due ?? d.total_cost;
                 const fmt = (v) => formatBillValue(v, 'cost');
+                const computedDays = computeDaysInPeriod(d.days_in_period, periodStartRaw, periodEndRaw);
                 
                 html += `
                     <div class="bill-detail-section">
@@ -9890,20 +10057,16 @@
                                     <span>${d.service_address || '-'}</span>
                                 </div>
                                 <div class="bill-summary-item">
-                                    <label>POD-ID</label>
-                                    <span>${d.pod_id || '-'}</span>
-                                </div>
-                                <div class="bill-summary-item">
                                     <label>Rate Schedule</label>
                                     <span>${d.rate_schedule || d.rate || '-'}</span>
                                 </div>
                                 <div class="bill-summary-item">
                                     <label>Billing Period</label>
-                                    <span>${periodStart} - ${periodEnd} (${d.days_in_period || '-'} days)</span>
+                                    <span>${periodStart} - ${periodEnd} (${computedDays ?? '-'} days)</span>
                                 </div>
                                 <div class="bill-summary-item highlight">
                                     <label>Amount Due</label>
-                                    <span>${fmt(d.amount_due)}</span>
+                                    <span>${fmt(amountDueVal)}</span>
                                 </div>
                                 <div class="bill-summary-item">
                                     <label>Due Date</label>
@@ -9918,10 +10081,11 @@
                 const hasToU = d.kwh_on_peak || d.kwh_mid_peak || d.kwh_off_peak;
                 const hasDemand = d.max_demand_kw || d.max_demand_on_peak_kw;
                 
-                // Calculate blended rate and avg cost per day
+                // Calculate blended rate and avg cost per day - use fallback field names
                 const totalKwh = d.kwh_total != null ? Number(d.kwh_total) : null;
-                const daysInPeriod = d.days_in_period != null ? Number(d.days_in_period) : null;
-                const amountDue = d.amount_due != null ? Number(d.amount_due) : null;
+                const daysInPeriod = computedDays;
+                const amountDueRaw = d.amount_due ?? d.total_amount_due ?? d.total_cost;
+                const amountDue = amountDueRaw != null ? Number(amountDueRaw) : null;
                 const blendedRateDollars = (totalKwh && amountDue && totalKwh > 0) ? amountDue / totalKwh : null;
                 const avgCostPerDay = (amountDue != null && daysInPeriod && daysInPeriod > 0) ? amountDue / daysInPeriod : null;
                 const avgKwhPerDay = (totalKwh != null && daysInPeriod && daysInPeriod > 0) ? totalKwh / daysInPeriod : (d.daily_avg_kwh != null ? Number(d.daily_avg_kwh) : null);
@@ -9974,30 +10138,6 @@
                             </div>
                             ${touHtml}
                             ${demandHtml}
-                        </div>
-                    </div>
-                `;
-                
-                // Charges Breakdown
-                html += `
-                    <div class="bill-detail-section">
-                        <div class="bill-detail-header">
-                            <span>💰 Charges Breakdown</span>
-                            <span class="toggle-icon">▼</span>
-                        </div>
-                        <div class="bill-detail-content">
-                            <div class="bill-charges-grid">
-                                <span class="charge-label">Energy Charges</span>
-                                <span class="charge-amount">${fmt(d.energy_charges_total)}</span>
-                                <span class="charge-label">Demand Charges</span>
-                                <span class="charge-amount">${fmt(d.demand_charges_total)}</span>
-                                <span class="charge-label">Other Charges</span>
-                                <span class="charge-amount">${fmt(d.other_charges_total)}</span>
-                                <span class="charge-label">Taxes</span>
-                                <span class="charge-amount">${fmt(d.taxes_total)}</span>
-                                <span class="charge-label charge-total">Total Amount Due</span>
-                                <span class="charge-amount charge-total">${fmt(d.amount_due)}</span>
-                            </div>
                         </div>
                     </div>
                 `;
@@ -10153,7 +10293,14 @@
                     const meterIdx = parseInt(input.dataset.meterIdx, 10);
                     
                     if (accounts[acctIdx] && accounts[acctIdx].meters && accounts[acctIdx].meters[meterIdx]) {
-                        accounts[acctIdx].meters[meterIdx][field] = input.value.trim();
+                        const v = input.value.trim();
+                        accounts[acctIdx].meters[meterIdx][field] = v;
+                        // Keep bill-level + detailed_data fields in sync so the lower "Bill Summary" section populates.
+                        if (field === 'service_address' && v) {
+                            payload.service_address = v;
+                            if (!payload.detailed_data) payload.detailed_data = {};
+                            payload.detailed_data.service_address = v;
+                        }
                     }
                 });
                 
@@ -10205,6 +10352,9 @@
                     if (result.success) {
                         this.showToast('Corrections saved!', 'success');
                         this._currentReviewFile.extraction_payload = payload;
+                        // If backend returned updated review state/missing_fields, reflect it immediately in the modal.
+                        if (result.review_status) this._currentReviewFile.review_status = result.review_status;
+                        if (Array.isArray(result.missing_fields)) this._currentReviewFile.validation = { missing_fields: result.missing_fields };
                         this._isEditMode = false;
                         this._screenshotDataUrl = null;
                         this._originalPayload = null;
@@ -10529,7 +10679,8 @@
             let groupedData = { files: [], accounts: [] };
             try {
                 // Fetch grouped bills data (includes files and extracted accounts/meters)
-                const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/grouped`, {
+                // service=electric filters to electric/combined/NULL service types (excludes water/gas-only)
+                const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/grouped?service=electric`, {
                     signal: controller.signal
                 });
                 clearTimeout(timeoutId);
@@ -10600,18 +10751,22 @@
                         const procStatus = file.processing_status || 'pending';
                         const reviewStatus = file.review_status || 'pending';
                         const processed = file.processed;
+                        const serviceType = file.service_type || (file.extraction_payload ? file.extraction_payload.service_type : null);
                         
                         let statusText, statusClass;
                         if (procStatus === 'error' || procStatus === 'failed') {
                             statusText = '✗ Analysis failed';
                             statusClass = 'error';
+                        } else if (reviewStatus === 'skipped') {
+                            statusText = serviceType ? serviceType.charAt(0).toUpperCase() + serviceType.slice(1) : 'Non-Electric';
+                            statusClass = 'skipped';
                         } else if (!processed && procStatus === 'pending') {
                             statusText = 'Waiting...';
                             statusClass = 'waiting';
                         } else if (!processed && procStatus === 'processing') {
                             statusText = 'Analyzing...';
                             statusClass = 'processing';
-                        } else if (reviewStatus === 'ok' || reviewStatus === 'approved') {
+                        } else if (reviewStatus === 'ok' || reviewStatus === 'approved' || reviewStatus === 'complete') {
                             statusText = 'Complete';
                             statusClass = 'complete';
                         } else if (reviewStatus === 'needs_review') {
@@ -10954,7 +11109,8 @@
         async function renderEmbeddedExtractedData(projectId) {
             try {
                 // Use the summary endpoint which provides properly aggregated data
-                const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/summary?months=12`);
+                // service=electric filters to electric/combined/NULL service types (excludes water/gas-only)
+                const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/summary?months=12&service=electric`);
                 const data = response.ok ? await response.json() : { success: false };
                 
                 if (!data.success || !data.accounts || data.accounts.length === 0) {
@@ -10975,16 +11131,17 @@
                 const seenBillKeys = new Set(); // Track unique bills for deduplication
                 
                 for (const account of data.accounts) {
+                    const accountNum = account.accountNumber || account.account_number || 'unknown';
                     const meters = account.meters || [];
                     for (const meter of meters) {
                         const meterNumber = meter.meterNumber || meter.meter_number || 'unknown';
                         // Sum each meter's Avg $/day for facility total
                         facilitySumAvgPerDay += meter.avgCostPerDay || meter.avgCostPerDayDollars || 0;
                         for (const bill of (meter.bills || [])) {
-                            // Create unique key for deduplication
+                            // Create unique key for deduplication - include account to avoid false deduplication
                             const periodStart = bill.period_start || bill.periodStart || '';
                             const periodEnd = bill.period_end || bill.periodEnd || '';
-                            const billKey = `${meterNumber}|${periodStart}|${periodEnd}`;
+                            const billKey = `${accountNum}|${meterNumber}|${periodStart}|${periodEnd}`;
 
                             // Only count each unique period once per meter
                             if (!seenBillKeys.has(billKey)) {
@@ -11177,7 +11334,7 @@
                                 const billKwh = bill.total_kwh || bill.totalKwh || 0;
                                 const billCost = bill.total_amount_due || bill.totalAmountDue || 0;
                                 const billRateValue = billKwh > 0 ? ((billCost / billKwh) * 100) : 0;
-                                const billDays = bill.daysInPeriod || 30;
+                                const billDays = computeDaysInPeriod(bill.daysInPeriod, bill.periodStart, bill.periodEnd) || 30;
                                 const billAvgDayValue = billDays > 0 ? (billCost / billDays) : 0;
                                 
                                 html += `
@@ -11289,16 +11446,33 @@
                             const charges = bill.charges || {};
                             const totalKwh = bill.total_kwh || bill.totalKwh || 0;
                             const totalCost = bill.total_amount_due || bill.totalAmountDue || 0;
-                            const days = bill.daysInPeriod || 0;
+                            const days = computeDaysInPeriod(bill.daysInPeriod, bill.periodStart, bill.periodEnd) ?? 0;
                             const ratePerKwhCents = totalKwh > 0 ? ((totalCost / totalKwh) * 100).toFixed(2) : '0.00';
                             
-                            // Transform TOU data from API format (onPeakKwh, onPeakCost) to display format (onPeak.kwh, onPeak.cost)
-                            const tou = {
-                                onPeak: (rawTou.onPeakKwh || rawTou.onPeakCost) ? { kwh: rawTou.onPeakKwh || 0, cost: rawTou.onPeakCost || 0 } : null,
-                                midPeak: (rawTou.midPeakKwh || rawTou.midPeakCost) ? { kwh: rawTou.midPeakKwh || 0, cost: rawTou.midPeakCost || 0 } : null,
-                                offPeak: (rawTou.offPeakKwh || rawTou.offPeakCost) ? { kwh: rawTou.offPeakKwh || 0, cost: rawTou.offPeakCost || 0 } : null,
-                                superOffPeak: (rawTou.superOffPeakKwh || rawTou.superOffPeakCost) ? { kwh: rawTou.superOffPeakKwh || 0, cost: rawTou.superOffPeakCost || 0 } : null
-                            };
+                            // Transform TOU data - prefer touPeriods array if available, fall back to flat structure
+                            const tou = {};
+                            const touPeriods = bill.touPeriods || [];
+                            if (touPeriods.length > 0) {
+                                // Use touPeriods array (from bill_tou_periods table)
+                                for (const p of touPeriods) {
+                                    const periodName = (p.period || '').toLowerCase().replace(/[- ]/g, '');
+                                    if (periodName.includes('super') && periodName.includes('off')) {
+                                        tou.superOffPeak = { kwh: p.kwh || 0, cost: p.estCostDollars || 0 };
+                                    } else if (periodName.includes('on')) {
+                                        tou.onPeak = { kwh: p.kwh || 0, cost: p.estCostDollars || 0 };
+                                    } else if (periodName.includes('mid')) {
+                                        tou.midPeak = { kwh: p.kwh || 0, cost: p.estCostDollars || 0 };
+                                    } else if (periodName.includes('off')) {
+                                        tou.offPeak = { kwh: p.kwh || 0, cost: p.estCostDollars || 0 };
+                                    }
+                                }
+                            } else {
+                                // Fallback to flat structure from bills table columns
+                                if (rawTou.onPeakKwh || rawTou.onPeakCost) tou.onPeak = { kwh: rawTou.onPeakKwh || 0, cost: rawTou.onPeakCost || 0 };
+                                if (rawTou.midPeakKwh || rawTou.midPeakCost) tou.midPeak = { kwh: rawTou.midPeakKwh || 0, cost: rawTou.midPeakCost || 0 };
+                                if (rawTou.offPeakKwh || rawTou.offPeakCost) tou.offPeak = { kwh: rawTou.offPeakKwh || 0, cost: rawTou.offPeakCost || 0 };
+                                if (rawTou.superOffPeakKwh || rawTou.superOffPeakCost) tou.superOffPeak = { kwh: rawTou.superOffPeakKwh || 0, cost: rawTou.superOffPeakCost || 0 };
+                            }
                             
                             // Format dates
                             const periodStart = bill.periodStart ? new Date(bill.periodStart).toLocaleDateString() : 'N/A';
@@ -11322,10 +11496,6 @@
                                                 [bill.meterAddress, 'bill.meterAddress'],
                                                 [ProjectState.siteData?.street ? (ProjectState.siteData.street + (ProjectState.siteData.city ? ', ' + ProjectState.siteData.city : '') + (ProjectState.siteData.state ? ' ' + ProjectState.siteData.state : '')) : null, 'project.siteAddress']
                                             ) || 'N/A'}</div>
-                                        </div>
-                                        <div>
-                                            <div style="color: #666; font-size: 0.75rem; text-transform: uppercase;">POD-ID</div>
-                                            <div style="color: #333; font-weight: 500;">${bill.podId || bill.meterNumber || 'N/A'}</div>
                                         </div>
                                         <div>
                                             <div style="color: #666; font-size: 0.75rem; text-transform: uppercase;">Rate Schedule</div>
@@ -11486,7 +11656,6 @@
             // Multi-select functionality
             const selectAllCheckbox = document.getElementById('embeddedBillSelectAll');
             let deleteSelectedBtn = document.getElementById('embeddedBillDeleteSelected');
-            const fileCheckboxes = document.querySelectorAll('.embedded-bill-checkbox');
 
             function updateDeleteButtonVisibility() {
                 const checkedCount = document.querySelectorAll('.embedded-bill-checkbox:checked').length;
@@ -11565,6 +11734,13 @@
 
                     if (deleted > 0) {
                         updateDeleteButtonVisibility();
+                        // Reset select-all checkbox
+                        const selectAllCb = document.getElementById('embeddedBillSelectAll');
+                        if (selectAllCb) selectAllCb.checked = false;
+                        // Always refresh extracted data section after deleting bills
+                        if (typeof BillsManager !== 'undefined' && BillsManager.loadProjectBillsSummary) {
+                            BillsManager.loadProjectBillsSummary();
+                        }
                         // Re-render if all files deleted
                         if (document.querySelectorAll('.embedded-bill-file-row').length === 0) {
                             renderEmbeddedBillsSection();
@@ -11573,27 +11749,36 @@
                 });
             }
 
-            // Select All checkbox - add listeners AFTER button is set up
+            // Select All checkbox - always use fresh query (covers files uploaded later)
             if (selectAllCheckbox) {
                 selectAllCheckbox.addEventListener('change', function() {
-                    fileCheckboxes.forEach(cb => cb.checked = this.checked);
+                    const checkboxes = document.querySelectorAll('.embedded-bill-checkbox');
+                    checkboxes.forEach(cb => cb.checked = this.checked);
                     updateDeleteButtonVisibility();
                 });
             }
 
-            // Individual checkboxes - add listeners AFTER button is set up
-            fileCheckboxes.forEach(cb => {
-                cb.addEventListener('change', function(e) {
-                    e.stopPropagation();
-                    updateDeleteButtonVisibility();
-                    // Update select-all state
-                    if (selectAllCheckbox) {
-                        const allChecked = document.querySelectorAll('.embedded-bill-checkbox:checked').length === fileCheckboxes.length;
-                        selectAllCheckbox.checked = allChecked;
+            // Individual checkboxes - use event delegation on container for dynamic content
+            const filesContainer = document.getElementById('embeddedFilesListContainer');
+            if (filesContainer) {
+                filesContainer.addEventListener('change', function(e) {
+                    if (e.target.classList.contains('embedded-bill-checkbox')) {
+                        e.stopPropagation();
+                        updateDeleteButtonVisibility();
+                        // Update select-all state with fresh count
+                        if (selectAllCheckbox) {
+                            const totalCheckboxes = document.querySelectorAll('.embedded-bill-checkbox').length;
+                            const checkedCount = document.querySelectorAll('.embedded-bill-checkbox:checked').length;
+                            selectAllCheckbox.checked = totalCheckboxes > 0 && checkedCount === totalCheckboxes;
+                        }
                     }
                 });
-                cb.addEventListener('click', e => e.stopPropagation());
-            });
+                filesContainer.addEventListener('click', function(e) {
+                    if (e.target.classList.contains('embedded-bill-checkbox')) {
+                        e.stopPropagation();
+                    }
+                });
+            }
         }
 
         async function handleEmbeddedBillUpload(files) {
@@ -11714,18 +11899,22 @@
                                     row.className = 'embedded-bill-file-row';
                                     row.dataset.fileId = fileId;
                                     row.dataset.status = 'waiting';
+                                    // IMPORTANT: Match the EXACT same structure as initial render (line 10789-10805)
                                     row.innerHTML = `
-                                        <span class="file-name">${displayName}</span>
-                                        <div class="file-progress-bar">
-                                            <div class="progress-track">
-                                                <div class="progress-fill waiting"></div>
+                                        <div class="file-info-column">
+                                            <div class="file-row-header">
+                                                <input type="checkbox" class="embedded-bill-checkbox" data-file-id="${fileId}" style="cursor: pointer;">
+                                                <span class="file-name">${displayName}</span>
                                             </div>
-                                            <span class="progress-text waiting">Waiting...</span>
+                                            <div class="file-progress-bar">
+                                                <div class="progress-track">
+                                                    <div class="progress-fill waiting"></div>
+                                                </div>
+                                                <span class="progress-text waiting">Waiting...</span>
+                                            </div>
                                         </div>
-                                        <div class="file-actions">
-                                            <button class="embedded-file-view-btn" data-file-id="${fileId}" title="View">View</button>
-                                            <button class="embedded-file-delete-btn" data-file-id="${fileId}" data-has-extracted="false" title="Delete">Delete</button>
-                                        </div>
+                                        <button class="embedded-file-view-btn" data-file-id="${fileId}" title="View">View</button>
+                                        <button class="embedded-file-delete-btn" data-file-id="${fileId}" data-has-extracted="false" title="Delete">Delete</button>
                                     `;
                                     existingFileList.appendChild(row);
                                     

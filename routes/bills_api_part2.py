@@ -17,7 +17,9 @@ from stores.project_store import stored_data
 from bills_db import (
     add_bill_screenshot,
     clone_bills_for_project,
+    delete_all_empty_accounts,
     delete_bill_file,
+    delete_bills_for_file,
     get_bill_by_id,
     get_bill_file_by_id,
     get_bill_files_for_project,
@@ -430,13 +432,21 @@ def register(*, bills_bp, is_enabled, populate_normalized_tables):
 
     @bills_bp.route("/api/projects/<project_id>/bills/files/<int:file_id>", methods=["DELETE"])
     def delete_bill_file_route(project_id, file_id):
-        """Delete a bill file."""
-        _ = project_id
+        """Delete a bill file and all related extracted data."""
         if not is_enabled():
             return jsonify({"error": "Bills feature is disabled"}), 403
 
         try:
+            # First delete bills and TOU periods for this file
+            delete_bills_for_file(file_id)
+            
+            # Then delete the file record itself
             deleted = delete_bill_file(file_id)
+            
+            # Finally cleanup any orphaned empty accounts for this project
+            if project_id:
+                delete_all_empty_accounts(project_id)
+            
             if deleted:
                 return jsonify({"success": True})
             return jsonify({"success": False, "error": "File not found"}), 404
@@ -455,7 +465,8 @@ def register(*, bills_bp, is_enabled, populate_normalized_tables):
             files = get_bill_files_for_project(project_id)
 
             if service_filter == "electric":
-                files = [f for f in files if f.get("service_type") in ("electric", "combined")]
+                # Include electric, combined, and NULL (legacy files before service_type was saved)
+                files = [f for f in files if f.get("service_type") in ("electric", "combined", None)]
 
             grouped_data = get_grouped_bills_data(project_id, service_filter=service_filter)
 
@@ -621,10 +632,26 @@ def register(*, bills_bp, is_enabled, populate_normalized_tables):
                 corrected_payload["utility_name"] = utility_name
 
                 update_bill_file_extraction_payload(file_id, corrected_payload)
-                recompute_bill_file_missing_fields(file_id)
+                # Also sync corrected payload into normalized tables so:
+                # - embedded bills summaries populate
+                # - missing_fields/review_status recompute is based on up-to-date DB values
+                try:
+                    original_filename = file_record.get("original_filename") or file_record.get("filename") or "bill.pdf"
+                    populate_normalized_tables(project_id, corrected_payload, original_filename, file_id=file_id)
+                except Exception as sync_err:
+                    print(f"[bills] Warning: could not sync corrected payload into normalized tables: {sync_err}")
+
+                missing = recompute_bill_file_missing_fields(file_id)
 
                 print(f"[bills] Updated extraction_payload for file {file_id}, utility={utility_name}")
-                return jsonify({"success": True, "message": "Corrections saved and extraction payload updated"}), 200
+                return jsonify(
+                    {
+                        "success": True,
+                        "message": "Corrections saved",
+                        "missing_fields": missing,
+                        "review_status": "needs_review" if missing else "ok",
+                    }
+                ), 200
 
             utility_name = data.get("utility_name")
             if not utility_name:

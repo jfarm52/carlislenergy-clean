@@ -397,7 +397,7 @@ def register(*, bills_bp, is_enabled, extraction_progress, populate_normalized_t
                 summaries.append(summary)
 
             if service_filter == "electric":
-                service_condition = "AND service_type IN ('electric', 'combined')"
+                service_condition = "AND (service_type IN ('electric', 'combined') OR service_type IS NULL)"
             else:
                 service_condition = ""
 

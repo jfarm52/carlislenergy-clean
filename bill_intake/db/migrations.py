@@ -8,9 +8,11 @@ def migrate_all(conn) -> None:
     _migrate_add_review_columns(conn)
     _migrate_add_bills_tables(conn)
     _migrate_add_tou_columns(conn)
+    _migrate_add_due_date_column(conn)
     _migrate_add_normalization_columns(conn)
     _migrate_add_sha256_column(conn)
     _migrate_add_service_type_column(conn)
+    _migrate_backfill_service_type_from_payload(conn)
 
 
 def _migrate_add_review_columns(conn):
@@ -185,6 +187,26 @@ def _migrate_add_tou_columns(conn):
         conn.rollback()
 
 
+def _migrate_add_due_date_column(conn):
+    """Add due_date column to bills table (older schemas)."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'bills' AND column_name = 'due_date'
+                """
+            )
+            if not cur.fetchone():
+                print("[bills_db] Adding due_date column to bills...")
+                cur.execute("ALTER TABLE bills ADD COLUMN due_date DATE")
+            conn.commit()
+            print("[bills_db] Due date column migration complete")
+    except Exception as e:
+        print(f"[bills_db] Due date column migration error (non-fatal): {e}")
+        conn.rollback()
+
+
 def _migrate_add_normalization_columns(conn):
     """Add normalization columns to utility_bill_files for text-based processing."""
     try:
@@ -298,6 +320,54 @@ def _migrate_add_service_type_column(conn):
             print("[bills_db] Service type column migration complete")
     except Exception as e:
         print(f"[bills_db] Service type column migration error (non-fatal): {e}")
+        conn.rollback()
+
+
+def _migrate_backfill_service_type_from_payload(conn):
+    """
+    Backfill service_type on utility_bill_files from extraction_payload.
+    
+    This fixes files that were processed before service_type was properly saved.
+    The extraction_payload JSON contains the detected service_type from the bill content.
+    """
+    try:
+        with conn.cursor() as cur:
+            # Count how many files need backfilling
+            cur.execute(
+                """
+                SELECT COUNT(*) FROM utility_bill_files
+                WHERE extraction_payload IS NOT NULL
+                  AND extraction_payload->>'service_type' IS NOT NULL
+                  AND (service_type IS NULL OR service_type = 'electric')
+                  AND extraction_payload->>'service_type' != 'electric'
+                """
+            )
+            count = cur.fetchone()[0]
+            
+            if count > 0:
+                print(f"[bills_db] Backfilling service_type for {count} files from extraction_payload...")
+                
+                # Update service_type from extraction_payload where it differs
+                cur.execute(
+                    """
+                    UPDATE utility_bill_files
+                    SET service_type = extraction_payload->>'service_type'
+                    WHERE extraction_payload IS NOT NULL
+                      AND extraction_payload->>'service_type' IS NOT NULL
+                      AND extraction_payload->>'service_type' IN ('electric', 'water', 'gas', 'combined')
+                      AND (service_type IS NULL 
+                           OR service_type != extraction_payload->>'service_type')
+                    """
+                )
+                updated = cur.rowcount
+                print(f"[bills_db] Updated service_type on {updated} files")
+            else:
+                print("[bills_db] No files need service_type backfill")
+            
+            conn.commit()
+            print("[bills_db] Service type backfill migration complete")
+    except Exception as e:
+        print(f"[bills_db] Service type backfill migration error (non-fatal): {e}")
         conn.rollback()
 
 

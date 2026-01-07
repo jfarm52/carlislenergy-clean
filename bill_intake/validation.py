@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 
-def validate_extraction(extraction_payload):
+def validate_extraction(extraction_payload, *, mode: str = "strict"):
     """
     Validate that all required fields are present in extraction payload.
 
-    Required fields:
-    - Bill-level: utility_name, account_number
-    - Per meter: meter_number, service_address
-    - Per read: period_start, period_end, kwh, total_charge
+    Modes:
+    - strict: used for “is this payload complete?” style checks
+    - analysis: used for “can we still compute / display useful analysis?” checks
+      (intentionally does NOT require service_address/rate_schedule and is tolerant of partial meters/reads)
 
     Returns:
         {
@@ -23,15 +23,64 @@ def validate_extraction(extraction_payload):
     if not extraction_payload:
         return {"is_valid": False, "missing_fields": ["No extraction data"]}
 
-    utility_name = extraction_payload.get("utility_name")
-    account_number = extraction_payload.get("account_number")
-    meters = extraction_payload.get("meters", [])
+    mode = (mode or "strict").strip().lower()
 
+    def _extract_meters(payload: dict) -> list:
+        meters_local = payload.get("meters", []) or []
+        if meters_local:
+            return meters_local
+        accounts = payload.get("accounts", []) or []
+        acc_meters = []
+        for a in accounts:
+            for m in (a or {}).get("meters", []) or []:
+                acc_meters.append(m)
+        return acc_meters
+
+    utility_name = extraction_payload.get("utility_name") or (extraction_payload.get("detailed_data") or {}).get("utility_name")
+    account_number = extraction_payload.get("account_number") or (extraction_payload.get("detailed_data") or {}).get("account_number")
+    meters = _extract_meters(extraction_payload)
+
+    # Utility/account are still important for normalizing into project analytics.
     if not utility_name:
         missing_fields.append("missing utility_name")
     if not account_number:
         missing_fields.append("missing account_number")
 
+    if mode == "analysis":
+        # For analysis/display, we only need *some* dated money/kWh signal.
+        # Service address and meter numbers are helpful context but not required.
+        detailed = extraction_payload.get("detailed_data") or {}
+        period_end = (
+            detailed.get("billing_period_end")
+            or extraction_payload.get("billing_period_end")
+            or extraction_payload.get("period_end")
+        )
+        amount_due = detailed.get("amount_due") or extraction_payload.get("amount_due") or extraction_payload.get("total_amount_due")
+
+        has_any_read = False
+        has_any_period_end = bool(period_end)
+        has_any_charge = amount_due is not None
+
+        for meter in meters:
+            reads = (meter or {}).get("reads", []) or []
+            for read in reads:
+                has_any_read = True
+                if read.get("period_end"):
+                    has_any_period_end = True
+                if read.get("total_charge") is not None:
+                    has_any_charge = True
+
+        if not meters and not detailed:
+            missing_fields.append("no meters found")
+
+        if not has_any_period_end:
+            missing_fields.append("missing billing_period_end")
+        if not has_any_charge:
+            missing_fields.append("missing amount_due")
+
+        return {"is_valid": len(missing_fields) == 0, "missing_fields": missing_fields}
+
+    # strict mode (legacy behavior)
     if not meters:
         missing_fields.append("no meters found")
     else:

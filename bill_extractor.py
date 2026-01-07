@@ -460,14 +460,17 @@ Use null for any field you cannot confidently extract. Amounts should be numbers
         }
 
 
-def compute_missing_fields(extracted_data):
+def compute_missing_fields(extracted_data, *, include_optional_fields: bool = False):
     """
     Compute which required fields are missing from extracted bill data.
     
     Required fields checked:
     - Bill-level: utility_name, account_number, total_kwh, total_amount_due
-    - Per meter: meter_number, service_address
+    - Per meter: meter_number
     - Per read: period_start, period_end, kwh, total_charge
+    
+    Optional (non-blocking) fields (when include_optional_fields=True):
+    - rate_schedule, service_address
     
     Args:
         extracted_data: dict with extraction results (may include 'detailed_data' key)
@@ -506,10 +509,11 @@ def compute_missing_fields(extracted_data):
     elif total_amount == 0:
         add_missing("total_amount_due", "Total Charge", "Value is zero")
     
-    # Check rate_schedule (optional but important)
-    rate_schedule = data.get('rate') or data.get('rate_schedule')
-    if not rate_schedule:
-        add_missing("rate_schedule", "Rate Schedule", "Value is missing")
+    # Optional: rate_schedule (useful context but shouldn't block display/analytics)
+    if include_optional_fields:
+        rate_schedule = data.get('rate') or data.get('rate_schedule')
+        if not rate_schedule:
+            add_missing("rate_schedule", "Rate Schedule", "Value is missing")
     
     # Check meters
     meters = data.get('meters', [])
@@ -532,8 +536,14 @@ def compute_missing_fields(extracted_data):
             
             if not meter_number:
                 add_missing(f"meter_{i+1}_meter_number", f"Meter {i+1} Number", "Meter number is missing")
-            if not service_address:
-                add_missing(f"meter_{i+1}_service_address", f"{meter_label} Service Address", "Service address is missing")
+            if include_optional_fields:
+                service_address = meter.get('service_address')
+                if not service_address:
+                    add_missing(
+                        f"meter_{i+1}_service_address",
+                        f"{meter_label} Service Address",
+                        "Service address is missing",
+                    )
             
             # Check reads for this meter
             reads = meter.get('reads', [])
@@ -558,77 +568,631 @@ def compute_missing_fields(extracted_data):
     return missing
 
 
+def _normalize_date_to_iso(date_str):
+    """
+    Convert various date formats to ISO YYYY-MM-DD format.
+    Handles: MM/DD/YY, MM/DD/YYYY, Month DD, YYYY, etc.
+    """
+    if not date_str:
+        return None
+    
+    import re
+    from datetime import datetime
+    
+    date_str = date_str.strip()
+    
+    # Try MM/DD/YY or MM/DD/YYYY
+    match = re.match(r'^(\d{1,2})/(\d{1,2})/(\d{2,4})$', date_str)
+    if match:
+        month, day, year = match.groups()
+        year = int(year)
+        if year < 100:
+            year = 2000 + year if year < 50 else 1900 + year
+        try:
+            return f"{year:04d}-{int(month):02d}-{int(day):02d}"
+        except:
+            pass
+    
+    # Try "Month DD, YYYY" or "Month DD YYYY"
+    try:
+        for fmt in ["%B %d, %Y", "%B %d %Y", "%b %d, %Y", "%b %d %Y"]:
+            try:
+                dt = datetime.strptime(date_str, fmt)
+                return dt.strftime("%Y-%m-%d")
+            except:
+                continue
+    except:
+        pass
+    
+    # Already in ISO format?
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+        return date_str
+    
+    return date_str  # Return as-is if can't parse
+
+
+def regex_extract_all_fields(raw_text):
+    """
+    Extract ALL bill fields using regex patterns BEFORE calling AI.
+    This is the first-pass extraction that can skip AI entirely if successful.
+    
+    Returns dict with extracted fields and service_type detection.
+    """
+    import re
+    
+    result = {
+        "success": False,
+        "utility_name": None,
+        "account_number": None,
+        "service_address": None,
+        "rate_schedule": None,
+        "billing_period_start": None,
+        "billing_period_end": None,
+        "due_date": None,
+        "total_kwh": None,
+        "total_amount": None,
+        "meter_number": None,
+        "service_type": "electric",  # default, will be overridden if non-electric detected
+        "_extraction_method": "regex",
+        "_raw_text": raw_text,
+    }
+    
+    if not raw_text:
+        return result
+    
+    text_lower = raw_text.lower()
+    
+    # ========== NON-ELECTRIC DETECTION ==========
+    # Be specific: look for ACTUAL bill content, not just utility name
+    # LADWP serves both water AND electric, so "water and power" in name doesn't tell us bill type
+    
+    # Look for actual WATER charges/usage section
+    water_bill_markers = [
+        "water charges",
+        "water service charges", 
+        "sewer charges",
+        "gallons used",
+        "hcf used",
+        "ccf used",
+        "water usage",
+        "sewer usage",
+        "water schedule",
+    ]
+    
+    # Look for actual ELECTRIC charges/usage section  
+    electric_bill_markers = [
+        "electric charges",
+        "kwh used",
+        "kwh total",
+        "total kwh",
+        "energy charges",
+        "demand charges",
+        "on-peak kwh",
+        "off-peak kwh",
+        "high peak kwh",
+        "low peak kwh",
+        "base kwh",
+    ]
+    
+    # Gas bill markers
+    gas_bill_markers = [
+        "gas charges",
+        "gas service charges",
+        "therms used",
+        "therm usage",
+        "natural gas",
+    ]
+    
+    has_water_content = any(marker in text_lower for marker in water_bill_markers)
+    has_electric_content = any(marker in text_lower for marker in electric_bill_markers)
+    has_gas_content = any(marker in text_lower for marker in gas_bill_markers)
+    
+    print(f"[regex_extract] Content detection: water={has_water_content}, electric={has_electric_content}, gas={has_gas_content}")
+    
+    # Determine service type based on ACTUAL content
+    if has_water_content and not has_electric_content:
+        result["service_type"] = "water"
+        print(f"[regex_extract] Detected NON-ELECTRIC bill: water (has water charges, no electric charges)")
+    elif has_gas_content and not has_electric_content:
+        result["service_type"] = "gas"
+        print(f"[regex_extract] Detected NON-ELECTRIC bill: gas (has gas charges, no electric charges)")
+    elif has_water_content and has_electric_content:
+        # This is a combined bill - treat as electric for extraction purposes
+        result["service_type"] = "electric"
+        print(f"[regex_extract] Combined water+electric bill - treating as ELECTRIC")
+    elif has_electric_content:
+        result["service_type"] = "electric"
+        print(f"[regex_extract] Electric bill detected")
+    else:
+        # No clear markers - default to electric and let AI figure it out
+        result["service_type"] = "electric"
+        print(f"[regex_extract] No clear service type markers - defaulting to electric")
+    
+    # ========== UTILITY NAME ==========
+    utility_patterns = [
+        r"(Southern California Edison|SCE)",
+        r"(Los Angeles Department of Water and Power|LADWP|LA ?DWP)",
+        r"(Pacific Gas (?:and|&) Electric|PG&E|PGE)",
+        r"(San Diego Gas (?:and|&) Electric|SDG&E|SDGE)",
+        r"(Sacramento Municipal Utility District|SMUD)",
+        r"(Burbank Water and Power|BWP)",
+        r"(Glendale Water (?:and|&) Power|GWP)",
+        r"(Pasadena Water (?:and|&) Power|PWP)",
+    ]
+    for pattern in utility_patterns:
+        match = re.search(pattern, raw_text, re.IGNORECASE)
+        if match:
+            result["utility_name"] = match.group(1).strip()
+            print(f"[regex_extract] utility_name: {result['utility_name']}")
+            break
+    
+    # ========== ACCOUNT NUMBER ==========
+    account_patterns = [
+        r"SA\s*#\s*[:\s]*(\d{10})",  # LADWP: "SA # : 7729100271" or "SA #: 8729100019"
+        r"Account\s*(?:Number|#|No\.?)[:\s]*([A-Z0-9\-]{6,20})",
+        r"Customer\s*Account[:\s]*([A-Z0-9\-]{6,20})",
+        r"Account[:\s]+(\d{3,4}[\-\s]\d{3,4}[\-\s]\d{3,4})",  # XXX-XXX-XXX format
+        r"Acct\.?\s*#?[:\s]*([A-Z0-9\-]{6,20})",
+    ]
+    for pattern in account_patterns:
+        match = re.search(pattern, raw_text, re.IGNORECASE)
+        if match:
+            result["account_number"] = match.group(1).strip()
+            print(f"[regex_extract] account_number: {result['account_number']}")
+            break
+    
+    # ========== SERVICE ADDRESS ==========
+    # For LADWP bills, the address is at the top (e.g., "739 DECATUR ST, LOS ANGELES, CA 90021")
+    # NOT in the "SERVES" field which contains meter description
+    address_patterns = [
+        # LADWP/Generic: Street address with city, state, ZIP (anywhere in text)
+        r"(\d{2,5}\s+[A-Z][A-Za-z\s]+(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|RD|ROAD|WAY|LN|LANE|CT|COURT|PL|PLACE)[,\s]+[A-Z][A-Za-z\s]+[,\s]*(?:CA|CALIFORNIA)\s*\d{5}(?:-\d{4})?)",
+        # Labeled SERVICE ADDRESS
+        r"SERVICE\s*ADDRESS[:\-]?\s*(.{10,100})",
+        r"Service\s*Location[:\-]?\s*(.{10,100})",
+        r"Premise\s*Address[:\-]?\s*(.{10,100})",
+        # DO NOT use SERVES - it contains meter description on LADWP bills, not address
+    ]
+    for pattern in address_patterns:
+        match = re.search(pattern, raw_text, re.IGNORECASE)
+        if match:
+            addr = match.group(1).strip()
+            # Clean up - stop at common field boundaries
+            addr = re.split(r"\n|POD-ID|BILLING|ACCOUNT|METER|RATE|NEXT", addr, maxsplit=1)[0].strip()
+            # Skip if it looks like a meter number (contains APM, kVARH, etc.)
+            if "APM" in addr.upper() or "KVARH" in addr.upper() or "BASE" in addr.upper():
+                continue
+            if len(addr) >= 10:
+                result["service_address"] = addr
+                print(f"[regex_extract] service_address: {result['service_address']}")
+                break
+    
+    # ========== RATE SCHEDULE ==========
+    rate_patterns = [
+        # LADWP: "RATE SCHEDULE" followed by full description on next line(s)
+        # e.g., "A-2 and A-2[i] Primary Electric - Rate B TOU - KVAR Metered Service"
+        r"RATE\s*SCHEDULE\s*\n([A-Z][\-\d\[\]i]+(?:\s+and\s+[A-Z][\-\d\[\]i]+)?[^\n]*(?:\n[A-Z][^\n]*)?)",
+        r"RATE\s*SCHEDULE[:\s]*([A-Z][\-\d\[\]i]+(?:\s+and\s+[A-Z][\-\d\[\]i]+)?[^\n]*)",
+        r"Rate[:\s]+(TOU[\-\s]?[A-Z0-9\-]+)",
+        r"Rate[:\s]+([A-Z][\-]?\d+(?:\[[A-Za-z0-9]+\])?)",
+        r"Schedule[:\s]+([A-Z0-9\-]+)",
+        r"Your\s*Rate[:\s]+([A-Z0-9\-]+)",
+    ]
+    for pattern in rate_patterns:
+        match = re.search(pattern, raw_text, re.IGNORECASE | re.MULTILINE)
+        if match:
+            rate = match.group(1).strip()
+            # Normalize whitespace (including newlines)
+            rate = re.sub(r'\s+', ' ', rate).strip()
+            # Reject garbage - stop at "NEXT SCHEDULED" if accidentally captured
+            rate = re.split(r'NEXT\s*SCHEDULED|METER\s*NUMBER', rate, maxsplit=1)[0].strip()
+            if len(rate) >= 2 and len(rate) <= 100 and not any(bad in rate.lower() for bad in ["please", "www."]):
+                result["rate_schedule"] = rate
+                print(f"[regex_extract] rate_schedule: {result['rate_schedule']}")
+                break
+    
+    # ========== BILLING PERIOD ==========
+    # Format: MM/DD/YYYY - MM/DD/YYYY or "Nov 1, 2024 to Dec 1, 2024"
+    period_patterns = [
+        r"(?:Billing|Service)\s*Period[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})\s*[-–to]+\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+        r"(?:Billing|Service)\s*Period[:\s]*(\w+\s+\d{1,2},?\s+\d{4})\s*[-–to]+\s*(\w+\s+\d{1,2},?\s+\d{4})",
+        r"From[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})\s*[-–to]+\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+        r"(\d{1,2}/\d{1,2}/\d{2,4})\s*[-–]\s*(\d{1,2}/\d{1,2}/\d{2,4})\s*(?:\d+\s*days?)?",
+    ]
+    for pattern in period_patterns:
+        match = re.search(pattern, raw_text, re.IGNORECASE)
+        if match:
+            start_raw = match.group(1).strip()
+            end_raw = match.group(2).strip()
+            # Convert to ISO format (YYYY-MM-DD)
+            result["billing_period_start"] = _normalize_date_to_iso(start_raw)
+            result["billing_period_end"] = _normalize_date_to_iso(end_raw)
+            print(f"[regex_extract] billing_period: {start_raw} -> {result['billing_period_start']} to {end_raw} -> {result['billing_period_end']}")
+            break
+    
+    # ========== DUE DATE ==========
+    due_patterns = [
+        r"Due\s*Date\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{4})",
+        r"Due\s*Date\s*[:\-]?\s*(\w+\s+\d{1,2},?\s+\d{4})",
+        r"Payment\s*Due\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{4})",
+        r"Payment\s*Due\s*[:\-]?\s*(\w+\s+\d{1,2},?\s+\d{4})",
+        r"Pay\s*By\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{4})",
+        r"DUE[:\s]+(\d{1,2}/\d{1,2}/\d{4})",
+    ]
+    for pattern in due_patterns:
+        match = re.search(pattern, raw_text, re.IGNORECASE)
+        if match:
+            due_raw = match.group(1).strip()
+            result["due_date"] = _normalize_date_to_iso(due_raw)
+            print(f"[regex_extract] due_date: {due_raw} -> {result['due_date']}")
+            break
+    
+    # ========== TOTAL KWH (electric only) ==========
+    if result["service_type"] in ("electric", "combined"):
+        kwh_patterns = [
+            # LADWP: "Electric Charges 10/24/25 - 11/26/25 81,920 kWh"
+            r"Electric\s*Charges\s*\d{1,2}/\d{1,2}/\d{2,4}\s*[-–]\s*\d{1,2}/\d{1,2}/\d{2,4}\s*([\d,]+(?:\.\d+)?)\s*kWh",
+            # LADWP: "Total kWh Consumption" row in usage history "81,920.00"
+            r"Total\s*kWh\s*Consumption[^\d]*([\d,]+(?:\.\d+)?)",
+            r"Total\s*(?:Usage|kWh|Energy)[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+            r"([\d,]+(?:\.\d+)?)\s*kWh\s*Total",
+            r"Total\s*kWh[:\s]*([\d,]+(?:\.\d+)?)",
+            r"Usage[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+            r"kWh\s*Used[:\s]*([\d,]+(?:\.\d+)?)",
+            r"Energy\s*Charges.*?([\d,]+(?:\.\d+)?)\s*kWh",
+        ]
+        for pattern in kwh_patterns:
+            match = re.search(pattern, raw_text, re.IGNORECASE)
+            if match:
+                try:
+                    kwh_str = match.group(1).replace(",", "")
+                    result["total_kwh"] = float(kwh_str)
+                    print(f"[regex_extract] total_kwh: {result['total_kwh']}")
+                    break
+                except (ValueError, TypeError):
+                    pass
+    
+    # ========== TOTAL AMOUNT ==========
+    amount_patterns = [
+        # LADWP: "Total Amount Due $ 22,462.77" (note space before $)
+        r"Total\s*Amount\s*Due\s*\$\s*([\d,]+\.\d{2})",
+        r"(?:Total\s*)?Amount\s*Due[:\s]*\$?\s*([\d,]+\.\d{2})",
+        r"Total\s*(?:Due|Owed|Charges)[:\s]*\$?\s*([\d,]+\.\d{2})",
+        r"(?:Please\s*)?Pay\s*(?:This\s*)?Amount[:\s]*\$?\s*([\d,]+\.\d{2})",
+        r"New\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
+        r"Balance\s*Due[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # LADWP electric: "Total Electric Charges $ 22,462.77"
+        r"Total\s*Electric\s*Charges\s*\$\s*([\d,]+\.\d{2})",
+    ]
+    for pattern in amount_patterns:
+        match = re.search(pattern, raw_text, re.IGNORECASE)
+        if match:
+            try:
+                amt_str = match.group(1).replace(",", "")
+                result["total_amount"] = float(amt_str)
+                print(f"[regex_extract] total_amount: {result['total_amount']}")
+                break
+            except (ValueError, TypeError):
+                pass
+    
+    # ========== METER NUMBER ==========
+    meter_patterns = [
+        # LADWP electric: Look for meter ID pattern like "APMYV00222-00027735" 
+        r"(APM[A-Z0-9]{2,5}[\-][0-9\-]{8,15})",
+        # Generic meter with hyphens after METER NUMBER label (skip "SERVES")
+        r"METER\s*NUMBER[\s\S]{0,30}?([\dA-Z]{2,5}[\-][A-Z0-9\-]{8,20})",
+        # Water meter: simple numeric like "96117765"
+        r"METER\s*NUMBER[:\s]+(\d{7,15})",
+        # Generic: "Meter #: 12345678" or "Meter No: 12345678"  
+        r"Meter\s*(?:#|No\.?|Number)[:\s]+([A-Z0-9\-]{6,20})",
+        r"Meter\s*ID[:\s]+([A-Z0-9\-]{6,20})",
+    ]
+    for pattern in meter_patterns:
+        match = re.search(pattern, raw_text, re.IGNORECASE)
+        if match:
+            meter_val = match.group(1).strip()
+            # Skip if it's just "SERVES" (description, not meter ID)
+            if meter_val.upper() == "SERVES":
+                continue
+            result["meter_number"] = meter_val
+            print(f"[regex_extract] meter_number: {result['meter_number']}")
+            break
+    
+    # ========== TOU BREAKDOWN (for electric bills) ==========
+    if result["service_type"] in ("electric", "combined"):
+        tou_data = []
+        # LADWP format: "High Peak Subtotal (11,680 kWh x $0.25624/kWh) $2,992.92"
+        ladwp_tou = r"(High\s*Peak|Low\s*Peak|Base)\s*Subtotal\s*\(\s*([\d,]+(?:\.\d+)?)\s*kWh\s*x\s*\$?([\d.]+)/kWh\s*\)\s*\$?([\d,]+(?:\.\d+)?)"
+        for match in re.finditer(ladwp_tou, raw_text, re.IGNORECASE):
+            period = match.group(1).strip()
+            kwh = float(match.group(2).replace(",", ""))
+            rate = float(match.group(3))
+            cost = float(match.group(4).replace(",", ""))
+            period_map = {"High Peak": "On-Peak", "Low Peak": "Off-Peak", "Base": "Super Off-Peak"}
+            tou_data.append({
+                "period": period_map.get(period.title(), period.title()),
+                "kwh": kwh, "rate": rate, "estimated_cost": cost
+            })
+        
+        # SCE format: "On-Peak 3,064.000 0.17271 529.59"
+        if not tou_data:
+            sce_tou = r"(On[\s\-]*Peak|Mid[\s\-]*Peak|Off[\s\-]*Peak|Super[\s\-]*Off[\s\-]*Peak)[\s\t]+([\d,]+\.?\d*)\s+([\d\.]+)\s+([\d,]+\.?\d*)"
+            for match in re.finditer(sce_tou, raw_text, re.IGNORECASE):
+                period = match.group(1).strip().replace("-", " ").title()
+                kwh = float(match.group(2).replace(",", ""))
+                rate = float(match.group(3))
+                cost = float(match.group(4).replace(",", ""))
+                tou_data.append({"period": period, "kwh": kwh, "rate": rate, "estimated_cost": cost})
+        
+        if tou_data:
+            result["tou_breakdown"] = tou_data
+            print(f"[regex_extract] tou_breakdown: {len(tou_data)} periods")
+    
+    # ========== DETERMINE SUCCESS ==========
+    # For non-electric: success if we got utility + account + amount
+    if result["service_type"] in ("water", "gas", "other"):
+        result["success"] = bool(
+            result["utility_name"] and 
+            result["account_number"] and 
+            result["total_amount"]
+        )
+    else:
+        # For electric: success if we got all critical fields
+        result["success"] = bool(
+            result["utility_name"] and 
+            result["account_number"] and 
+            result["total_kwh"] and 
+            result["total_amount"] and
+            result["billing_period_start"] and
+            result["billing_period_end"]
+        )
+    
+    print(f"[regex_extract] Extraction {'SUCCESSFUL' if result['success'] else 'INCOMPLETE'} - service_type={result['service_type']}")
+    return result
+
+
+def transform_to_ui_payload(result):
+    """
+    Transform extraction result to the nested structure the UI expects.
+    The UI reads from payload.detailed_data for modal display.
+    """
+    # If already has detailed_data from AI parser, just ensure consistency
+    if "detailed_data" in result and result["detailed_data"]:
+        dd = result["detailed_data"]
+        # Ensure flat fields are also in detailed_data for UI consistency
+        if not dd.get("service_address") and result.get("service_address"):
+            dd["service_address"] = result["service_address"]
+        if not dd.get("rate_schedule") and result.get("rate_schedule"):
+            dd["rate_schedule"] = result["rate_schedule"]
+        if not dd.get("due_date") and result.get("due_date"):
+            dd["due_date"] = result["due_date"]
+        if not dd.get("amount_due") and result.get("total_amount"):
+            dd["amount_due"] = result["total_amount"]
+            dd["total_amount_due"] = result["total_amount"]
+        if not dd.get("kwh_total") and result.get("total_kwh"):
+            dd["kwh_total"] = result["total_kwh"]
+        if not dd.get("billing_period_start") and result.get("billing_period_start"):
+            dd["billing_period_start"] = result["billing_period_start"]
+        if not dd.get("billing_period_end") and result.get("billing_period_end"):
+            dd["billing_period_end"] = result["billing_period_end"]
+        if not dd.get("tou_breakdown") and result.get("tou_breakdown"):
+            dd["tou_breakdown"] = result["tou_breakdown"]
+        return result
+    
+    # Create detailed_data from flat regex result
+    detailed_data = {
+        "service_address": result.get("service_address", ""),
+        "rate_schedule": result.get("rate_schedule", ""),
+        "rate": result.get("rate_schedule", ""),  # alias
+        "billing_period_start": result.get("billing_period_start"),
+        "billing_period_end": result.get("billing_period_end"),
+        "period_start": result.get("billing_period_start"),  # alias
+        "period_end": result.get("billing_period_end"),  # alias
+        "due_date": result.get("due_date"),
+        "kwh_total": result.get("total_kwh"),
+        "amount_due": result.get("total_amount"),
+        "total_amount_due": result.get("total_amount"),  # alias
+        "total_cost": result.get("total_amount"),  # alias
+        "tou_breakdown": result.get("tou_breakdown", []),
+        "meter_number": result.get("meter_number"),
+    }
+    
+    # Build the transformed payload
+    transformed = {
+        "success": result.get("success", False),
+        "utility_name": result.get("utility_name"),
+        "account_number": result.get("account_number"),
+        "service_type": result.get("service_type", "electric"),
+        "rate_schedule": result.get("rate_schedule"),
+        "due_date": result.get("due_date"),
+        "service_address": result.get("service_address"),
+        "meter_number": result.get("meter_number"),
+        "_extraction_method": result.get("_extraction_method", "regex"),
+        "detailed_data": detailed_data,
+    }
+    
+    return transformed
+
+
 def extract_bill_data_text_based(file_id, job_queue, file_path, project_id):
     """Text-based bill extraction using normalization pipeline."""
     from bills import NormalizationService, TextCleaner, CacheService
     from bills.parser import TwoPassParser
     from bills.job_queue import JobState
     from bills.cache import build_metrics
-    from bills_db import update_file_processing_status
+    from bills_db import update_bill_file_extraction_payload, update_bill_file_status, update_file_processing_status
     import time
     
     start_time = time.time()
     print(f"[bill_extractor] Starting text-based extraction for file {file_id}")
-    
-    job_queue.update_state(file_id, JobState.EXTRACTING_TEXT, "Extracting text from file")
-    normalizer = NormalizationService()
-    norm_result = normalizer.normalize(file_path)
-    
-    if not norm_result.success:
-        print(f"[bill_extractor] Normalization failed: {norm_result.error}")
-        update_file_processing_status(file_id, 'failed', {"error": norm_result.error})
-        return {"success": False, "error": norm_result.error}
-    
-    print(f"[bill_extractor] Extracted {len(norm_result.text)} chars via {norm_result.metadata.get('method')}")
-    
-    job_queue.update_state(file_id, JobState.CLEANING, "Cleaning and filtering text")
-    cleaner = TextCleaner()
-    clean_result = cleaner.clean(norm_result.text)
-    print(f"[bill_extractor] Cleaned text: {clean_result.stats}")
-    
-    cache = CacheService()
-    text_hash, cached = cache.check_and_get(clean_result.cleaned_text)
-    
-    if cached:
-        job_queue.update_state(file_id, JobState.CACHED_HIT, "Using cached result")
-        print(f"[bill_extractor] Cache hit for hash {text_hash[:12]}")
-        result = cached['parse_result']
-        # Add cleaned text to result for regex fallback extraction
-        result['_raw_text'] = clean_result.cleaned_text
-        save_bill_to_normalized_tables(file_id, project_id, result)
-        update_file_processing_status(file_id, 'complete', cached.get('metrics', {}))
-        return result
-    
-    job_queue.update_state(file_id, JobState.PARSING_PASS_A, "Parsing with AI (Pass A)")
-    parser = TwoPassParser()
-    parse_result = parser.parse(clean_result.cleaned_text, clean_result.evidence_lines)
-    
-    if parse_result.pass_used == "A+B":
-        job_queue.update_state(file_id, JobState.PARSING_PASS_B, "Extended parsing (Pass B)")
-    
-    duration_ms = (time.time() - start_time) * 1000
-    print(f"[bill_extractor] Parsing complete: pass={parse_result.pass_used}, success={parse_result.success}")
-    
-    metrics = build_metrics(
-        method=norm_result.metadata.get('method', 'unknown'),
-        duration_ms=duration_ms,
-        tokens_in=parse_result.tokens_in,
-        tokens_out=parse_result.tokens_out,
-        pages=norm_result.metadata.get('pages', 1),
-        char_count=len(clean_result.cleaned_text),
-        cache_hit=False,
-        pass_used=parse_result.pass_used
-    )
-    
-    if parse_result.success:
-        cache.save_result(file_id, text_hash, clean_result.cleaned_text, parse_result.data, metrics)
-        # Add cleaned text to data for regex fallback extraction
-        parse_result.data['_raw_text'] = clean_result.cleaned_text
-        save_bill_to_normalized_tables(file_id, project_id, parse_result.data)
-        update_file_processing_status(file_id, 'complete', metrics)
-        print(f"[bill_extractor] Extraction complete for file {file_id}")
-        return parse_result.data
-    else:
-        update_file_processing_status(file_id, 'failed', metrics)
+
+    try:
+        job_queue.update_state(file_id, JobState.EXTRACTING_TEXT, "Extracting text from file")
+        normalizer = NormalizationService()
+        norm_result = normalizer.normalize(file_path)
+
+        if not norm_result.success:
+            print(f"[bill_extractor] Normalization failed: {norm_result.error}")
+            err = norm_result.error or "Normalization failed"
+            payload = {
+                "success": False,
+                "error_code": "NORMALIZATION_FAILED",
+                "error_reason": err,
+                "error": err,  # back-compat
+            }
+            update_bill_file_extraction_payload(file_id, payload)
+            update_bill_file_status(file_id, "failed", processed=True)
+            update_file_processing_status(file_id, "failed", {"error": norm_result.error})
+            return payload
+
+        print(f"[bill_extractor] Extracted {len(norm_result.text)} chars via {norm_result.metadata.get('method')}")
+
+        job_queue.update_state(file_id, JobState.CLEANING, "Cleaning and filtering text")
+        cleaner = TextCleaner()
+        clean_result = cleaner.clean(norm_result.text)
+        print(f"[bill_extractor] Cleaned text: {clean_result.stats}")
+
+        # ========== STEP 1: REGEX EXTRACTION FIRST (free, fast) ==========
+        job_queue.update_state(file_id, JobState.CLEANING, "Extracting with patterns")
+        regex_result = regex_extract_all_fields(clean_result.cleaned_text)
+        
+        # ========== STEP 2: NON-ELECTRIC EARLY EXIT ==========
+        if regex_result.get("service_type") in ("water", "gas"):
+            print(f"[bill_extractor] NON-ELECTRIC bill detected ({regex_result['service_type']}) - skipping AI")
+            duration_ms = (time.time() - start_time) * 1000
+            
+            # Build minimal result for non-electric bills
+            regex_result["success"] = True  # Mark success to save to DB
+            save_bill_to_normalized_tables(file_id, project_id, regex_result)
+            
+            metrics = build_metrics(
+                method=norm_result.metadata.get("method", "unknown"),
+                duration_ms=duration_ms,
+                tokens_in=0,  # No AI tokens used!
+                tokens_out=0,
+                pages=norm_result.metadata.get("pages", 1),
+                char_count=len(clean_result.cleaned_text),
+                cache_hit=False,
+                pass_used="regex_only",
+            )
+            
+            update_bill_file_extraction_payload(file_id, transform_to_ui_payload(regex_result))
+            update_bill_file_status(file_id, "complete", processed=True)
+            update_file_processing_status(file_id, "complete", metrics)
+            print(f"[bill_extractor] Non-electric bill processed in {duration_ms:.0f}ms (NO AI CALL)")
+            return regex_result
+        
+        # ========== STEP 3: CHECK IF REGEX GOT ALL CRITICAL FIELDS ==========
+        if regex_result.get("success"):
+            print(f"[bill_extractor] REGEX extracted all critical fields - skipping AI!")
+            duration_ms = (time.time() - start_time) * 1000
+            
+            save_bill_to_normalized_tables(file_id, project_id, regex_result)
+            
+            metrics = build_metrics(
+                method=norm_result.metadata.get("method", "unknown"),
+                duration_ms=duration_ms,
+                tokens_in=0,  # No AI tokens used!
+                tokens_out=0,
+                pages=norm_result.metadata.get("pages", 1),
+                char_count=len(clean_result.cleaned_text),
+                cache_hit=False,
+                pass_used="regex_only",
+            )
+            
+            update_bill_file_extraction_payload(file_id, transform_to_ui_payload(regex_result))
+            missing_fields = compute_missing_fields(regex_result)
+            update_bill_file_status(file_id, "complete", processed=True, missing_fields=missing_fields)
+            update_file_processing_status(file_id, "complete", metrics)
+            print(f"[bill_extractor] Extraction complete via REGEX in {duration_ms:.0f}ms (NO AI CALL)")
+            return regex_result
+        
+        # ========== STEP 4: CHECK CACHE (for AI results) ==========
+        cache = CacheService()
+        text_hash, cached = cache.check_and_get(clean_result.cleaned_text)
+
+        if cached:
+            job_queue.update_state(file_id, JobState.CACHED_HIT, "Using cached result")
+            print(f"[bill_extractor] Cache hit for hash {text_hash[:12]}")
+            result = cached["parse_result"]
+            # Merge with regex result (regex fills any gaps)
+            merged = {**regex_result, **result}
+            merged["_raw_text"] = clean_result.cleaned_text
+            save_bill_to_normalized_tables(file_id, project_id, merged)
+
+            update_bill_file_extraction_payload(file_id, transform_to_ui_payload(merged))
+            missing_fields = compute_missing_fields(merged)
+            update_bill_file_status(file_id, "complete", processed=True, missing_fields=missing_fields)
+            update_file_processing_status(file_id, "complete", cached.get("metrics", {}))
+            return merged
+
+        # ========== STEP 5: CALL AI (only if regex missed critical fields) ==========
+        print(f"[bill_extractor] Regex incomplete - calling AI for missing fields")
+        job_queue.update_state(file_id, JobState.PARSING_PASS_A, "Parsing with AI (Pass A)")
+        parser = TwoPassParser()
+        parse_result = parser.parse(clean_result.cleaned_text, clean_result.evidence_lines)
+
+        if parse_result.pass_used == "A+B":
+            job_queue.update_state(file_id, JobState.PARSING_PASS_B, "Extended parsing (Pass B)")
+
+        duration_ms = (time.time() - start_time) * 1000
+        print(f"[bill_extractor] AI parsing complete: pass={parse_result.pass_used}, success={parse_result.success}")
+
+        metrics = build_metrics(
+            method=norm_result.metadata.get("method", "unknown"),
+            duration_ms=duration_ms,
+            tokens_in=parse_result.tokens_in,
+            tokens_out=parse_result.tokens_out,
+            pages=norm_result.metadata.get("pages", 1),
+            char_count=len(clean_result.cleaned_text),
+            cache_hit=False,
+            pass_used=parse_result.pass_used,
+        )
+
+        if parse_result.success:
+            cache.save_result(file_id, text_hash, clean_result.cleaned_text, parse_result.data, metrics)
+            # Merge AI result with regex result (AI takes priority, regex fills gaps)
+            merged = {**regex_result, **parse_result.data}
+            merged["_raw_text"] = clean_result.cleaned_text
+            save_bill_to_normalized_tables(file_id, project_id, merged)
+
+            update_bill_file_extraction_payload(file_id, transform_to_ui_payload(merged))
+            missing_fields = compute_missing_fields(merged)
+            update_bill_file_status(file_id, "complete", processed=True, missing_fields=missing_fields)
+            update_file_processing_status(file_id, "complete", metrics)
+
+            print(f"[bill_extractor] Extraction complete (AI+regex) for file {file_id}")
+            return merged
+
+        # "Soft failure" where parser returns a structured error
+        err = parse_result.error or "Parsing failed"
+        payload = {
+            "success": False,
+            "error_code": "PARSING_FAILED",
+            "error_reason": err,
+            "error": err,  # back-compat
+        }
+        update_bill_file_extraction_payload(file_id, payload)
+        update_bill_file_status(file_id, "failed", processed=True)
+        update_file_processing_status(file_id, "failed", metrics)
         print(f"[bill_extractor] Extraction failed: {parse_result.error}")
-        return {"success": False, "error": parse_result.error}
+        return payload
+
+    except Exception as e:
+        # Ensure we never leave a file stuck in 'processing' due to an unhandled exception
+        err = str(e) or "Unknown error"
+        print(f"[bill_extractor] Unhandled exception in text extraction: {err}")
+        payload = {
+            "success": False,
+            "error_code": "EXTRACTION_EXCEPTION",
+            "error_reason": err,
+            "error": err,  # back-compat
+        }
+        try:
+            update_bill_file_extraction_payload(file_id, payload)
+            update_bill_file_status(file_id, "failed", processed=True)
+            update_file_processing_status(file_id, "failed", {"error": err})
+        except Exception:
+            # Avoid masking the original exception if DB writes fail
+            pass
+        raise

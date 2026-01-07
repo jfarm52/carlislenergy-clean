@@ -143,6 +143,8 @@ def init_bills_tables() -> bool:
                     demand_charges NUMERIC(12,2),
                     other_charges NUMERIC(12,2),
                     taxes NUMERIC(12,2),
+                    due_date DATE,
+                    service_type VARCHAR(50) DEFAULT 'electric',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 

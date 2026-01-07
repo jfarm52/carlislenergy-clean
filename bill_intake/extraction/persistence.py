@@ -64,7 +64,6 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
     try:
         from bill_intake.utils.normalization import normalize_utility_name
         from bills_db import (
-            delete_all_empty_accounts,
             delete_bills_for_file,
             insert_bill,
             insert_bill_tou_period,
@@ -98,9 +97,10 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
 
         meters = extracted_data.get("meters", [])
         service_address = get_val("service_address", "")
-        rate_schedule = get_val("rate", "rate_schedule", "")
+        rate_schedule = get_val("rate", "rate_schedule", "rate_code", "schedule")
 
         if rate_schedule:
+            # Reject obvious AI hallucinations (sentences, not rate codes)
             bad_phrases = [
                 "contact",
                 "commission",
@@ -116,10 +116,12 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
                 "public utilities",
             ]
             has_bad_phrase = any(phrase in rate_schedule.lower() for phrase in bad_phrases)
-            is_too_long = len(rate_schedule) > 25
-            if has_bad_phrase or is_too_long:
+            if has_bad_phrase:
                 print(f"[bill_extractor] Rejecting bad rate_schedule from AI: '{rate_schedule[:60]}...'")
                 rate_schedule = ""
+            # Truncate to column size if somehow longer than 100 chars
+            elif len(rate_schedule) > 100:
+                rate_schedule = rate_schedule[:100]
 
         service_address_original = service_address
         if service_address and len(service_address) < 20:
@@ -133,45 +135,42 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
         if raw_text:
             import re
 
-            if not rate_schedule or rate_schedule.strip() == "":
-                rate_patterns = [
-                    r"Rate\s*Schedule\s*[:\-]?\s*([A-Z0-9\-]+(?:\s[A-Z0-9\-]+)?)",
-                    r"RATE\s*SCHEDULE\s*[:\-]?\s*([A-Z0-9\-]+(?:\s[A-Z0-9\-]+)?)",
-                    r"Rate\s*Plan\s*[:\-]?\s*([A-Z0-9\-]+(?:\s[A-Z0-9\-]+)?)",
-                    r"Tariff\s*[:\-]?\s*([A-Z0-9\-]+(?:\s[A-Z0-9\-]+)?)",
-                    r"Service\s*Class\s*[:\-]?\s*([A-Z0-9\-]+)",
-                    r"Schedule\s*[:\-]?\s*([A-Z0-9\-]+(?:\s[A-Z0-9\-]+)?)",
-                ]
-                for pattern in rate_patterns:
-                    match = re.search(pattern, raw_text, re.MULTILINE)
-                    if match:
-                        candidate = match.group(1).strip()
-                        if 3 <= len(candidate) <= 25 and not any(
-                            word in candidate.lower() for word in ["contact", "please", "may", "service"]
-                        ):
-                            rate_schedule = candidate
-                            print(f"[bill_extractor] Regex fallback extracted rate_schedule: {rate_schedule}")
-                            break
+            # Reject rate_schedule that contains field boundary text (AI grabbed across fields)
+            if rate_schedule and "next scheduled" in rate_schedule.lower():
+                print(f"[bill_extractor] Rejecting rate_schedule with field boundary text: '{rate_schedule}'")
+                rate_schedule = ""
 
+            # LADWP: capture full rate schedule line, stopping at known field boundaries
+            if not rate_schedule or rate_schedule.strip() == "":
+                ladwp_rate_match = re.search(
+                    r"RATE\s*SCHEDULE[:\s]*(.+?)(?=\s*NEXT\s*SCHEDULED|\s*METER\s*NUMBER|\s*BILLING\s*PERIOD|\s*SERVES|\n\n|$)",
+                    raw_text, re.IGNORECASE | re.DOTALL
+                )
+                if ladwp_rate_match:
+                    rate_schedule = ladwp_rate_match.group(1).strip()
+                    # Clean up any trailing whitespace or partial words
+                    rate_schedule = re.sub(r'\s+', ' ', rate_schedule).strip()
+                    print(f"[bill_extractor] Rate schedule extracted: {rate_schedule}")
+
+            # Service address extraction
             if not service_address or service_address.strip() == "":
                 address_patterns = [
                     r"SERVICE\s*ADDRESS[:\-]?\s*(.{10,100})",
                     r"Service\s*Location[:\-]?\s*(.{10,100})",
                     r"Premise\s*Address[:\-]?\s*(.{10,100})",
-                    r"Site\s*Address[:\-]?\s*(.{10,100})",
-                    r"(\d{2,5}\s+[A-Z][A-Za-z\s]+(?:Street|ST|Avenue|AVE|Boulevard|BLVD|Road|RD|Drive|DR|Lane|LN|Way|WAY|Court|CT|Place|PL|Circle|CIR|Parkway|PKY)[^\n]{0,50})",
+                    r"(\d{2,5}\s+[A-Z][A-Za-z\s]+(?:Street|ST|Avenue|AVE|Boulevard|BLVD|Road|RD|Drive|DR|Lane|LN|Way|WAY|Court|CT|Place|PL|Circle|CIR|Parkway|PKY)[,\s]+[A-Z][A-Za-z\s]+[,\s]+[A-Z]{2}\s*\d{5})",
                 ]
                 for pattern in address_patterns:
                     match = re.search(pattern, raw_text, re.IGNORECASE)
                     if match:
                         addr_text = match.group(1)
-                        addr_text = re.split(r"\n|POD-ID|BILLING|ACCOUNT|METER", addr_text, maxsplit=1)[0]
+                        addr_text = re.split(r"\n|POD-ID|BILLING|ACCOUNT|METER|RATE", addr_text, maxsplit=1)[0]
                         service_address = addr_text.strip()
-                        print(f"[bill_extractor] Regex fallback extracted service_address: {service_address}")
+                        print(f"[bill_extractor] Regex extracted service_address: {service_address}")
                         break
                 if (not service_address or service_address.strip() == "") and service_address_original:
                     service_address = service_address_original
-                    print(f"[bill_extractor] Regex found no address, keeping original: {service_address}")
+                    print(f"[bill_extractor] Keeping original service_address: {service_address}")
 
         period_start = get_val("billing_period_start")
         period_end = get_val("billing_period_end")
@@ -206,57 +205,60 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
         tou_breakdown_from_regex = []
         if raw_text:
             import re
+            print("[bill_extractor] Attempting TOU regex extraction")
+            matches = []
 
-            has_tou_keywords = bool(
-                re.search(
-                    r"\b(TOU|Time[\s\-]*of[\s\-]*Use|Peak|High[\s\-]*Peak|Low[\s\-]*Peak|On[\s\-]*Peak|Mid[\s\-]*Peak|Off[\s\-]*Peak|Super[\s\-]*Off[\s\-]*Peak|Base[\s\-]*Period)\b",
-                    raw_text,
-                    re.IGNORECASE,
-                )
-            )
-            if has_tou_keywords:
-                print("[bill_extractor] Detected TOU keywords in bill text - attempting regex extraction")
-                tou_patterns = [
-                    r"(High[\s\-]*Peak|Low[\s\-]*Peak|Base|On[\s\-]*Peak|Mid[\s\-]*Peak|Off[\s\-]*Peak|Super[\s\-]*Off[\s\-]*Peak)[\s:]+([\d,]+\.?\d*)\s*kWh(?:\s+\$?([\d,]+\.?\d*))?",
-                    r"(High[\s\-]*Peak|Low[\s\-]*Peak|Base|On[\s\-]*Peak|Mid[\s\-]*Peak|Off[\s\-]*Peak|Super[\s\-]*Off[\s\-]*Peak)[^\d\n]{0,20}([\d,]+\.?\d*)[^\d\n]{0,20}\$?([\d,]+\.?\d*)[^\d\n]{0,20}\$?([\d,]+\.?\d*)",
-                    r"(High[\s\-]*Peak|Low[\s\-]*Peak|Base|On[\s\-]*Peak|Mid[\s\-]*Peak|Off[\s\-]*Peak|Super[\s\-]*Off[\s\-]*Peak)[:\s]+([\d,]+\.?\d*)\s*kWh\s*@?\s*\$?([\d\.]+)\s*=?\s*\$?([\d,]+\.?\d*)",
+            # LADWP-specific: "High Peak Subtotal (11,680 kWh x $0.25624/kWh) $2,992.92"
+            ladwp_tou_pattern = r"(High\s*Peak|Low\s*Peak|Base)\s*Subtotal\s*\(\s*([\d,]+(?:\.\d+)?)\s*kWh\s*x\s*\$?([\d.]+)/kWh\s*\)\s*\$?([\d,]+(?:\.\d+)?)"
+            for match in re.finditer(ladwp_tou_pattern, raw_text, re.IGNORECASE):
+                period_name = match.group(1).strip()
+                kwh_str = match.group(2).replace(",", "")
+                rate_str = match.group(3)
+                cost_str = match.group(4).replace(",", "")
+                try:
+                    kwh = float(kwh_str)
+                    rate = float(rate_str)
+                    cost = float(cost_str)
+                    # Map LADWP names to standard names
+                    period_map = {"High Peak": "On-Peak", "Low Peak": "Off-Peak", "Base": "Super Off-Peak"}
+                    period_normalized = period_map.get(period_name.title(), period_name.title())
+                    if not any(m["period"] == period_normalized for m in matches):
+                        matches.append({"period": period_normalized, "kwh": kwh, "rate": rate, "estimated_cost": cost})
+                        print(f"[bill_extractor] LADWP TOU: {period_normalized} = {kwh} kWh @ ${rate}/kWh = ${cost}")
+                except (ValueError, TypeError) as e:
+                    print(f"[bill_extractor] Failed to parse LADWP TOU: {e}")
+
+            # SCE/generic TOU patterns (only if LADWP didn't match)
+            if not matches:
+                generic_patterns = [
+                    # SCE: On-Peak 3,064.000 0.17271 529.59
+                    r"(On[\s\-]*Peak|Mid[\s\-]*Peak|Off[\s\-]*Peak|Super[\s\-]*Off[\s\-]*Peak)[\s\t]+([\d,]+\.?\d*)\s+([\d\.]+)\s+([\d,]+\.?\d*)",
+                    # Generic: On-Peak 3,064 kWh @ $0.17/kWh = $529
+                    r"(On[\s\-]*Peak|Mid[\s\-]*Peak|Off[\s\-]*Peak|Super[\s\-]*Off[\s\-]*Peak)[:\s]+([\d,]+\.?\d*)\s*kWh\s*[@x]\s*\$?([\d\.]+)(?:/kWh)?\s*=?\s*\$?([\d,]+\.?\d*)",
                 ]
-
-                matches = []
-                for pattern in tou_patterns:
+                for pattern in generic_patterns:
                     for match in re.finditer(pattern, raw_text, re.IGNORECASE):
                         period_name = match.group(1).strip()
                         kwh_str = match.group(2).replace(",", "").strip()
-                        cost_str = None
-                        rate_str = None
-                        if len(match.groups()) >= 3 and match.group(3):
-                            if len(match.groups()) >= 4 and match.group(4):
-                                rate_str = match.group(3).replace(",", "").strip()
-                                cost_str = match.group(4).replace(",", "").strip()
-                            else:
-                                cost_str = match.group(3).replace(",", "").strip()
-
+                        rate_str = match.group(3).replace(",", "").strip() if match.group(3) else None
+                        cost_str = match.group(4).replace(",", "").strip() if len(match.groups()) >= 4 and match.group(4) else None
                         try:
                             kwh = float(kwh_str)
-                            cost = float(cost_str) if cost_str else None
                             rate = float(rate_str) if rate_str else None
+                            cost = float(cost_str) if cost_str else None
                             period_normalized = " ".join(period_name.split()).title()
-                            if not next((m for m in matches if m["period"] == period_normalized), None):
-                                tou_entry = {"period": period_normalized, "kwh": kwh, "rate": rate, "estimated_cost": cost}
-                                matches.append(tou_entry)
-                                print(
-                                    f"[bill_extractor] Regex TOU extraction: {period_normalized} = {kwh} kWh"
-                                    + (f" @ ${rate}/kWh = ${cost}" if rate and cost else "")
-                                )
+                            if not any(m["period"] == period_normalized for m in matches):
+                                matches.append({"period": period_normalized, "kwh": kwh, "rate": rate, "estimated_cost": cost})
+                                print(f"[bill_extractor] TOU: {period_normalized} = {kwh} kWh" + (f" @ ${rate}/kWh = ${cost}" if rate and cost else ""))
                         except (ValueError, TypeError) as e:
-                            print(f"[bill_extractor] Failed to parse TOU values: {e}")
+                            print(f"[bill_extractor] Failed to parse TOU: {e}")
 
-                if matches:
-                    tou_breakdown_from_regex = matches
-                    print(f"[bill_extractor] Generic TOU regex extraction found {len(matches)} periods")
+            if matches:
+                tou_breakdown_from_regex = matches
+                print(f"[bill_extractor] TOU extraction found {len(matches)} periods")
 
         total_kwh = clean_numeric(get_val("kwh_total", "total_kwh"))
-        total_amount = clean_numeric(get_val("amount_due", "total_amount_due", "total_owed", "new_charges"))
+        total_amount = clean_numeric(get_val("amount_due", "total_amount_due", "total_owed", "new_charges", "total_amount"))
 
         energy_charges = clean_numeric(get_val("energy_charges_total", "energy_charges"))
         demand_charges = clean_numeric(get_val("demand_charges_total", "total_facilities_demand_charge", "demand_charges"))
@@ -296,9 +298,76 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
                 missing_fields.append("rate_schedule")
 
         service_type = get_val("service_type") or "electric"
-        if service_type not in ("electric", "water", "gas", "combined"):
+        
+        # Debug: log current values before service_type inference
+        print(f"[bill_extractor] Before service_type inference: service_type={service_type}, rate_schedule='{rate_schedule}'")
+        
+        # Infer service_type from context if not explicitly set or defaulted to electric
+        if service_type == "electric":
+            rate_lower = (rate_schedule or "").lower()
+            raw_lower = (raw_text or "").lower()
+            print(f"[bill_extractor] Checking rate_lower='{rate_lower}' for water/gas keywords")
+
+            # Utility name hints
+            if utility_name and "water" in utility_name.lower():
+                service_type = "water"
+                print(f"[bill_extractor] Inferred service_type='water' from utility_name: {utility_name}")
+
+            # Rate/description hints
+            if service_type == "electric":
+                if "water" in rate_lower or "sewer" in rate_lower:
+                    service_type = "water"
+                    print(f"[bill_extractor] Inferred service_type='water' from rate_schedule: {rate_schedule}")
+                elif "gas" in rate_lower or "therm" in rate_lower:
+                    service_type = "gas"
+                    print(f"[bill_extractor] Inferred service_type='gas' from rate_schedule: {rate_schedule}")
+
+            # Raw text hints (fallback if rate got stripped)
+            if service_type == "electric":
+                if any(h in raw_lower for h in ["water schedule", "water charges", "sewer charges", "sewer service"]):
+                    service_type = "water"
+                    print(f"[bill_extractor] Inferred service_type='water' from raw_text")
+                elif "therm" in raw_lower or "gas charges" in raw_lower:
+                    service_type = "gas"
+                    print(f"[bill_extractor] Inferred service_type='gas' from raw_text")
+
+            # No kWh but charges present → likely non-electric
+            if service_type == "electric":
+                if (total_kwh is None or total_kwh == 0) and total_amount and total_amount > 0:
+                    service_type = "other"
+                    print(f"[bill_extractor] Inferred service_type='other' - no kWh but has charges")
+        
+        if service_type not in ("electric", "water", "gas", "combined", "other"):
             service_type = "electric"
         print(f"[bill_extractor] service_type: {service_type}")
+        
+        # Save service_type to the file record for proper filtering
+        from bill_intake.db.bill_files import update_bill_file_service_type
+        update_bill_file_service_type(file_id, service_type)
+
+        # Update extraction_payload with regex-extracted values so modal can see them
+        from bills_db import update_bill_file_extraction_payload
+        payload_updates = {}
+        if "detailed_data" not in extracted_data:
+            extracted_data["detailed_data"] = {}
+        dd = extracted_data["detailed_data"]
+        # Only update if we extracted new values via regex
+        if service_address and not dd.get("service_address"):
+            dd["service_address"] = service_address
+            payload_updates["service_address"] = service_address
+        if rate_schedule and not dd.get("rate_schedule") and not dd.get("rate"):
+            dd["rate_schedule"] = rate_schedule
+            dd["rate"] = rate_schedule
+            payload_updates["rate_schedule"] = rate_schedule
+        if due_date and not dd.get("due_date"):
+            dd["due_date"] = due_date
+            payload_updates["due_date"] = due_date
+        if tou_breakdown_from_regex:
+            dd["tou_breakdown"] = tou_breakdown_from_regex
+            payload_updates["tou_breakdown"] = tou_breakdown_from_regex
+        if payload_updates:
+            print(f"[bill_extractor] Updating extraction_payload with regex values: {list(payload_updates.keys())}")
+            update_bill_file_extraction_payload(file_id, extracted_data)
 
         tou_rates = extracted_data.get("tou_rates", []) or extracted_data.get("tou_breakdown", [])
         if not tou_rates and tou_breakdown_from_regex:
@@ -326,9 +395,30 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
                     if not period_end:
                         period_end = first_read.get("period_end")
 
+                # NOTE: Don't drop whole bills just because kWh is missing/0.
+                # We still want partial cost/charges analysis and the ability to fix kWh later.
                 print(f"[bill_extractor] DEBUG: meter {meter_number} - m_kwh={m_kwh} (type={type(m_kwh)})")
-                if m_kwh is None or m_kwh == 0:
-                    print(f"[bill_extractor] Skipping non-electric meter {meter_number} - no kWh data")
+                if m_kwh == 0:
+                    m_kwh = None
+
+                # If this is effectively a single-meter bill and meter kWh is missing, fall back to bill-level total_kwh.
+                if m_kwh is None and total_kwh is not None and len(meters) == 1:
+                    m_kwh = total_kwh
+
+                has_any_money = (
+                    m_amount is not None
+                    or total_amount is not None
+                    or energy_charges is not None
+                    or demand_charges is not None
+                    or other_charges is not None
+                    or taxes is not None
+                )
+                has_any_usage = m_kwh is not None or total_kwh is not None
+                has_any_dates = bool(period_start or period_end)
+                has_any_tou = bool(tou_rates)
+
+                if not (has_any_money or has_any_usage or has_any_dates or has_any_tou):
+                    print(f"[bill_extractor] Skipping empty meter {meter_number} - no usable data")
                     continue
 
                 if m_amount is None:
@@ -375,7 +465,9 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
 
                 print(f"[bill_extractor] Saved bill {bill_id} for meter {meter_number} - kwh={m_kwh}, amount=${m_amount}")
         else:
-            meter_id = upsert_utility_meter(account_id, "Primary", service_address)
+            # Use extracted meter_number if available, otherwise default to "Primary"
+            extracted_meter_num = get_val("meter_number", "meter_id") or "Primary"
+            meter_id = upsert_utility_meter(account_id, extracted_meter_num, service_address)
             bill_id = insert_bill(
                 bill_file_id=file_id,
                 account_id=account_id,
@@ -417,11 +509,44 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
 
             print(f"[bill_extractor] Saved bill {bill_id} (single meter) - kwh={total_kwh}, amount=${total_amount}")
 
-        if missing_fields:
-            update_bill_file_review_status(file_id, "needs_review")
-            print(f"[bill_extractor] Updated bill file {file_id} review_status to 'needs_review' - missing: {missing_fields}")
+        # Check if this is a non-electric bill - if so, mark as skipped (not applicable)
+        if service_type and service_type.lower() != "electric":
+            update_bill_file_review_status(file_id, "skipped")
+            print(f"[bill_extractor] Status 'skipped' (gray) - non-electric bill: {service_type}")
+        else:
+            # Determine review status based on what's present/missing
+            # Critical fields: kWh, amount, dates - without these, bill is unusable
+            # Non-critical fields: service_address, rate_schedule - nice to have
+            critical_missing = []
+            non_critical_missing = []
+            
+            if total_kwh is None or total_kwh == 0:
+                critical_missing.append("total_kwh")
+            if total_amount is None or total_amount == 0:
+                critical_missing.append("total_amount")
+            if not period_start and not period_end:
+                critical_missing.append("billing_period")
+            
+            if not service_address or service_address.strip() == "":
+                non_critical_missing.append("service_address")
+            if not rate_schedule or rate_schedule.strip() == "":
+                non_critical_missing.append("rate_schedule")
+            
+            if critical_missing:
+                # Yellow - missing critical info
+                update_bill_file_review_status(file_id, "needs_review")
+                print(f"[bill_extractor] Status 'needs_review' (yellow) - critical missing: {critical_missing}")
+            elif non_critical_missing:
+                # Green - critical data present, some non-critical missing
+                update_bill_file_review_status(file_id, "ok")
+                print(f"[bill_extractor] Status 'ok' (green) - non-critical missing: {non_critical_missing}")
+            else:
+                # Blue - perfect extraction, all fields present
+                update_bill_file_review_status(file_id, "complete")
+                print(f"[bill_extractor] Status 'complete' (blue) - all fields present")
 
-        delete_all_empty_accounts(project_id)
+        # NOTE: delete_all_empty_accounts removed from here to avoid race conditions
+        # during parallel bill processing. Empty accounts are cleaned up during file deletion.
         return True
     except Exception as e:
         print(f"[bill_extractor] Error saving to normalized tables: {e}")

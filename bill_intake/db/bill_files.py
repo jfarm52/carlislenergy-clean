@@ -133,24 +133,28 @@ def update_file_processing_status(file_id, status, metrics=None):
     conn = get_connection()
     try:
         with conn.cursor() as cur:
+            # If the pipeline reached a terminal state, mark the file as processed so the UI stops polling forever.
+            processed = status in ("complete", "failed", "error")
             if metrics:
                 cur.execute(
                     """
                     UPDATE utility_bill_files
                     SET processing_status = %s,
-                        processing_metrics = %s
+                        processing_metrics = %s,
+                        processed = %s
                     WHERE id = %s
                     """,
-                    (status, Json(metrics), file_id),
+                    (status, Json(metrics), processed, file_id),
                 )
             else:
                 cur.execute(
                     """
                     UPDATE utility_bill_files
-                    SET processing_status = %s
+                    SET processing_status = %s,
+                        processed = %s
                     WHERE id = %s
                     """,
-                    (status, file_id),
+                    (status, processed, file_id),
                 )
             conn.commit()
     finally:
@@ -258,22 +262,22 @@ def delete_bill_file(file_id):
 def update_bill_file_status(file_id, status, processed=True, missing_fields=None):
     """
     Update the processing status of a bill file.
-
-    If missing_fields is provided, also updates review_status.
+    
+    NOTE: Does NOT set review_status - that's handled exclusively by
+    save_bill_to_normalized_tables which has actual extracted data after regex fallbacks.
     """
     conn = get_connection()
     try:
         with conn.cursor() as cur:
             if missing_fields is not None:
-                review_status = "needs_review" if len(missing_fields) > 0 else "ok"
+                # Store missing_fields for reference but don't set review_status
                 cur.execute(
                     """
                     UPDATE utility_bill_files
-                    SET processing_status = %s, processed = %s,
-                        missing_fields = %s, review_status = %s
+                    SET processing_status = %s, processed = %s, missing_fields = %s
                     WHERE id = %s
                     """,
-                    (status, processed, Json(missing_fields), review_status, file_id),
+                    (status, processed, Json(missing_fields), file_id),
                 )
             else:
                 cur.execute(
@@ -338,10 +342,68 @@ def update_bill_file_extraction_payload(file_id, extraction_payload):
         conn.close()
 
 
+def update_bill_file_service_type(file_id, service_type):
+    """
+    Update the service_type of a bill file.
+    
+    This is called after extraction to persist the detected service type
+    (electric, water, gas, combined) to the file record for proper filtering.
+    """
+    if service_type not in ("electric", "water", "gas", "combined"):
+        service_type = "electric"  # Default fallback
+    
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE utility_bill_files
+                SET service_type = %s
+                WHERE id = %s
+                """,
+                (service_type, file_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
 def get_files_status_for_project(project_id):
     """Get status summary for all files in a project (for polling)."""
     conn = get_connection()
     try:
+        # Repair known inconsistent states from older versions of the pipeline:
+        # - processing_status='complete' but extraction_payload is NULL (UI shows "upload failed" while list can show "processing")
+        # - terminal processing_status but processed=FALSE (UI polls forever)
+        with conn.cursor() as cur:
+            # Mark "complete but no payload" as error (terminal) so UI can show actionable state.
+            cur.execute(
+                """
+                UPDATE utility_bill_files
+                SET processing_status = 'error',
+                    review_status = 'error',
+                    processed = TRUE
+                WHERE project_id = %s
+                  AND processing_status = 'complete'
+                  AND extraction_payload IS NULL
+                """,
+                (project_id,),
+            )
+
+            # Ensure terminal statuses stop polling.
+            cur.execute(
+                """
+                UPDATE utility_bill_files
+                SET processed = TRUE
+                WHERE project_id = %s
+                  AND processed = FALSE
+                  AND processing_status IN ('complete', 'failed', 'error')
+                """,
+                (project_id,),
+            )
+            conn.commit()
+
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """

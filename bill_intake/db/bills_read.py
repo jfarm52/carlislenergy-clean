@@ -55,7 +55,8 @@ def get_grouped_bills_data(project_id, service_filter=None):
                     JOIN bills b ON b.account_id = a.id
                     JOIN utility_bill_files ubf ON b.bill_file_id = ubf.id
                     WHERE a.project_id = %s
-                      AND ubf.service_type IN ('electric', 'combined')
+                      AND (ubf.service_type IN ('electric', 'combined') OR ubf.service_type IS NULL)
+                      AND b.total_kwh > 0
                     ORDER BY a.utility_name, a.account_number
                     """,
                     (project_id,),
@@ -89,7 +90,8 @@ def get_grouped_bills_data(project_id, service_filter=None):
                         JOIN bills b ON b.meter_id = m.id
                         JOIN utility_bill_files ubf ON b.bill_file_id = ubf.id
                         WHERE m.utility_account_id = %s
-                          AND ubf.service_type IN ('electric', 'combined')
+                          AND (ubf.service_type IN ('electric', 'combined') OR ubf.service_type IS NULL)
+                          AND b.total_kwh > 0
                         ORDER BY m.meter_number
                         """,
                         (acc["id"],),
@@ -118,7 +120,8 @@ def get_grouped_bills_data(project_id, service_filter=None):
                             FROM bills b
                             JOIN utility_bill_files ubf ON b.bill_file_id = ubf.id
                             WHERE b.meter_id = %s
-                              AND ubf.service_type IN ('electric', 'combined')
+                              AND (ubf.service_type IN ('electric', 'combined') OR ubf.service_type IS NULL)
+                              AND b.total_kwh > 0
                             ORDER BY b.period_end DESC
                             """,
                             (meter["id"],),
@@ -154,7 +157,7 @@ def get_grouped_bills_data(project_id, service_filter=None):
 
                 result.append(account_data)
 
-            service_condition = "AND service_type IN ('electric', 'combined')" if service_filter == "electric" else ""
+            service_condition = "AND (service_type IN ('electric', 'combined') OR service_type IS NULL)" if service_filter == "electric" else ""
 
             cur.execute(
                 f"""
@@ -192,7 +195,7 @@ def get_account_summary(account_id, months=12, service_filter=None):
     try:
         if service_filter == "electric":
             service_join = "JOIN utility_bill_files ubf ON b.bill_file_id = ubf.id"
-            service_condition = "AND ubf.service_type IN ('electric', 'combined')"
+            service_condition = "AND (ubf.service_type IN ('electric', 'combined') OR ubf.service_type IS NULL) AND b.total_kwh > 0"
         else:
             service_join = ""
             service_condition = ""
