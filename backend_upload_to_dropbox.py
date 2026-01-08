@@ -63,7 +63,7 @@ def detect_device(user_agent):
     return "Other"
 
 def sanitize_name(name):
-    """Sanitize folder name: trim whitespace, replace / and \ with -"""
+    """Sanitize folder name: trim whitespace, replace / and \\ with -"""
     return name.strip().replace("/", "-").replace("\\", "-")
 
 def normalize(name):
