@@ -233,6 +233,69 @@ def get_account_summary(account_id, service_filter=None):
             )
             combined = cur.fetchone()
 
+            # Check if we have TOU data from bills table columns
+            has_bills_tou = any([
+                combined["tou_on_kwh"], combined["tou_mid_kwh"],
+                combined["tou_off_kwh"], combined["tou_super_off_kwh"]
+            ])
+
+            # If no TOU from bills table, fallback to aggregating from bill_tou_periods
+            tou_data = {
+                "onPeakKwh": None, "midPeakKwh": None, "offPeakKwh": None, "superOffPeakKwh": None,
+                "onPeakCost": None, "midPeakCost": None, "offPeakCost": None, "superOffPeakCost": None,
+            }
+
+            if has_bills_tou:
+                tou_data = {
+                    "onPeakKwh": float(combined["tou_on_kwh"]) if combined["tou_on_kwh"] else None,
+                    "midPeakKwh": float(combined["tou_mid_kwh"]) if combined["tou_mid_kwh"] else None,
+                    "offPeakKwh": float(combined["tou_off_kwh"]) if combined["tou_off_kwh"] else None,
+                    "superOffPeakKwh": float(combined["tou_super_off_kwh"]) if combined["tou_super_off_kwh"] else None,
+                    "onPeakCost": float(combined["tou_on_cost"]) if combined["tou_on_cost"] else None,
+                    "midPeakCost": float(combined["tou_mid_cost"]) if combined["tou_mid_cost"] else None,
+                    "offPeakCost": float(combined["tou_off_cost"]) if combined["tou_off_cost"] else None,
+                    "superOffPeakCost": float(combined["tou_super_off_cost"]) if combined["tou_super_off_cost"] else None,
+                }
+            else:
+                # Fallback: aggregate TOU from bill_tou_periods table
+                cur.execute(
+                    f"""
+                    WITH dedupe AS (
+                        SELECT DISTINCT ON (b.meter_id, b.period_start, b.period_end, b.total_kwh, b.total_amount_due)
+                            b.id
+                        FROM bills b
+                        {service_join}
+                        WHERE b.account_id = %s
+                        {service_condition}
+                        ORDER BY b.meter_id, b.period_start, b.period_end, b.total_kwh, b.total_amount_due, b.id
+                    )
+                    SELECT
+                        COALESCE(SUM(CASE WHEN LOWER(tp.period) LIKE '%%on%%peak%%' OR LOWER(tp.period) LIKE '%%high%%peak%%' THEN tp.kwh END), 0) AS on_kwh,
+                        COALESCE(SUM(CASE WHEN LOWER(tp.period) LIKE '%%mid%%peak%%' THEN tp.kwh END), 0) AS mid_kwh,
+                        COALESCE(SUM(CASE WHEN LOWER(tp.period) LIKE '%%off%%peak%%' AND LOWER(tp.period) NOT LIKE '%%super%%' THEN tp.kwh END), 0) AS off_kwh,
+                        COALESCE(SUM(CASE WHEN LOWER(tp.period) LIKE '%%super%%off%%' THEN tp.kwh END), 0) AS super_off_kwh,
+                        COALESCE(SUM(CASE WHEN LOWER(tp.period) LIKE '%%on%%peak%%' OR LOWER(tp.period) LIKE '%%high%%peak%%' THEN tp.est_cost_dollars END), 0) AS on_cost,
+                        COALESCE(SUM(CASE WHEN LOWER(tp.period) LIKE '%%mid%%peak%%' THEN tp.est_cost_dollars END), 0) AS mid_cost,
+                        COALESCE(SUM(CASE WHEN LOWER(tp.period) LIKE '%%off%%peak%%' AND LOWER(tp.period) NOT LIKE '%%super%%' THEN tp.est_cost_dollars END), 0) AS off_cost,
+                        COALESCE(SUM(CASE WHEN LOWER(tp.period) LIKE '%%super%%off%%' THEN tp.est_cost_dollars END), 0) AS super_off_cost
+                    FROM bill_tou_periods tp
+                    WHERE tp.bill_id IN (SELECT id FROM dedupe)
+                    """,
+                    (account_id,),
+                )
+                tou_agg = cur.fetchone()
+                if tou_agg:
+                    tou_data = {
+                        "onPeakKwh": float(tou_agg["on_kwh"]) if tou_agg["on_kwh"] else None,
+                        "midPeakKwh": float(tou_agg["mid_kwh"]) if tou_agg["mid_kwh"] else None,
+                        "offPeakKwh": float(tou_agg["off_kwh"]) if tou_agg["off_kwh"] else None,
+                        "superOffPeakKwh": float(tou_agg["super_off_kwh"]) if tou_agg["super_off_kwh"] else None,
+                        "onPeakCost": float(tou_agg["on_cost"]) if tou_agg["on_cost"] else None,
+                        "midPeakCost": float(tou_agg["mid_cost"]) if tou_agg["mid_cost"] else None,
+                        "offPeakCost": float(tou_agg["off_cost"]) if tou_agg["off_cost"] else None,
+                        "superOffPeakCost": float(tou_agg["super_off_cost"]) if tou_agg["super_off_cost"] else None,
+                    }
+
             combined_data = {
                 "sumKwh": float(combined["total_kwh"]) if combined["total_kwh"] else 0,
                 "sumCost": float(combined["total_cost"]) if combined["total_cost"] else 0,
@@ -242,20 +305,7 @@ def get_account_summary(account_id, service_filter=None):
                 "avgCostPerDay": 0,
                 "avgCostPerDayDollars": 0,
                 "billCount": combined["bill_count"] or 0,
-                "tou": {
-                    "onPeakKwh": float(combined["tou_on_kwh"]) if combined["tou_on_kwh"] else None,
-                    "midPeakKwh": float(combined["tou_mid_kwh"]) if combined["tou_mid_kwh"] else None,
-                    "offPeakKwh": float(combined["tou_off_kwh"]) if combined["tou_off_kwh"] else None,
-                    "superOffPeakKwh": float(combined["tou_super_off_kwh"])
-                    if combined["tou_super_off_kwh"]
-                    else None,
-                    "onPeakCost": float(combined["tou_on_cost"]) if combined["tou_on_cost"] else None,
-                    "midPeakCost": float(combined["tou_mid_cost"]) if combined["tou_mid_cost"] else None,
-                    "offPeakCost": float(combined["tou_off_cost"]) if combined["tou_off_cost"] else None,
-                    "superOffPeakCost": float(combined["tou_super_off_cost"])
-                    if combined["tou_super_off_cost"]
-                    else None,
-                },
+                "tou": tou_data,
             }
             if combined_data["sumKwh"] > 0:
                 combined_data["blendedRateDollars"] = combined_data["sumCost"] / combined_data["sumKwh"]

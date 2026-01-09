@@ -2598,6 +2598,201 @@
             }
         }
         
+        /* ========== GLASSMORPHISM FACILITY SUMMARY ========== */
+        .facility-glass-container {
+            position: relative;
+            background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+        .facility-glass-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(ellipse at 30% 20%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
+                        radial-gradient(ellipse at 70% 80%, rgba(96, 165, 250, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+        }
+        .facility-glass-header {
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+        .facility-glass-utility {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #fff;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            letter-spacing: -0.5px;
+        }
+        .facility-glass-pill {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 20px;
+            padding: 0.35rem 1rem;
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.9);
+            margin: 0.75rem 0;
+        }
+        .facility-glass-section-title {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.95);
+            margin: 0.75rem 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .facility-glass-section-title span:first-child {
+            filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.5));
+        }
+        .facility-glass-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.75rem;
+            position: relative;
+            z-index: 1;
+        }
+        .facility-glass-stat {
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 12px;
+            padding: 0.75rem 0.5rem;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        .facility-glass-stat:hover {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+        .facility-glass-stat .stat-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #fff;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+        .facility-glass-stat .stat-label {
+            font-size: 0.65rem;
+            color: rgba(255, 255, 255, 0.7);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 0.25rem;
+        }
+        @media (max-width: 500px) {
+            .facility-glass-stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .facility-glass-stat .stat-value {
+                font-size: 1rem;
+            }
+        }
+        
+        /* ========== GLASSMORPHISM TOU SECTION ========== */
+        .facility-glass-tou {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            z-index: 1;
+        }
+        .facility-glass-tou-bar {
+            display: flex;
+            gap: 3px;
+            height: 10px;
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+        .facility-glass-tou-bar > div {
+            transition: all 0.3s ease;
+        }
+        .facility-glass-tou-bar > div:hover {
+            filter: brightness(1.15);
+        }
+        .facility-glass-tou-cards {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+        }
+        .facility-glass-tou-card {
+            flex: 1;
+            min-width: 110px;
+            border-radius: 10px;
+            padding: 0.75rem 0.5rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+        }
+        .facility-glass-tou-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 50%);
+            pointer-events: none;
+        }
+        .facility-glass-tou-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+        .facility-glass-tou-card.tou-on-peak { background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); }
+        .facility-glass-tou-card.tou-mid-peak { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+        .facility-glass-tou-card.tou-off-peak { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); }
+        .facility-glass-tou-card.tou-super-off { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }
+        .facility-glass-tou-card .tou-label {
+            font-size: 0.6rem;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.95);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.35rem;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+        }
+        .facility-glass-tou-card .tou-kwh {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #fff;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+        .facility-glass-tou-card .tou-cost {
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.9);
+            margin-top: 0.15rem;
+        }
+        .facility-glass-tou-card .tou-rate {
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.8);
+            margin-top: 0.1rem;
+        }
+        @media (max-width: 500px) {
+            .facility-glass-tou-cards {
+                gap: 0.5rem;
+            }
+            .facility-glass-tou-card {
+                min-width: calc(50% - 0.25rem);
+            }
+        }
+        
         /* ========== EMBEDDED METER STATS ROW - MOBILE RESPONSIVE ========== */
         .embedded-meter-stats-row {
             display: grid;
@@ -11146,9 +11341,45 @@
                 let facilitySumAvgPerDay = 0; // Sum of each meter's Avg $/day
                 const seenBillKeys = new Set(); // Track unique bills for deduplication
                 
+                // Aggregate TOU data across all accounts
+                let facilityTouOnKwh = 0, facilityTouOnCost = 0;
+                let facilityTouMidKwh = 0, facilityTouMidCost = 0;
+                let facilityTouOffKwh = 0, facilityTouOffCost = 0;
+                let facilityTouSuperOffKwh = 0, facilityTouSuperOffCost = 0;
+                
                 for (const account of data.accounts) {
                     const accountNum = account.accountNumber || account.account_number || 'unknown';
                     const meters = account.meters || [];
+                    
+                    // Aggregate TOU from account combined data first
+                    const accountTou = (account.combined || account).tou || {};
+                    let accountHasTou = (accountTou.onPeakKwh || 0) + (accountTou.midPeakKwh || 0) + (accountTou.offPeakKwh || 0) + (accountTou.superOffPeakKwh || 0) > 0;
+                    
+                    if (accountHasTou) {
+                        // Use account-level aggregated TOU
+                        facilityTouOnKwh += accountTou.onPeakKwh || 0;
+                        facilityTouOnCost += accountTou.onPeakCost || 0;
+                        facilityTouMidKwh += accountTou.midPeakKwh || 0;
+                        facilityTouMidCost += accountTou.midPeakCost || 0;
+                        facilityTouOffKwh += accountTou.offPeakKwh || 0;
+                        facilityTouOffCost += accountTou.offPeakCost || 0;
+                        facilityTouSuperOffKwh += accountTou.superOffPeakKwh || 0;
+                        facilityTouSuperOffCost += accountTou.superOffPeakCost || 0;
+                    } else {
+                        // Fallback: aggregate TOU from meters
+                        for (const m of meters) {
+                            const meterTou = m.tou || {};
+                            facilityTouOnKwh += meterTou.onPeakKwh || 0;
+                            facilityTouOnCost += meterTou.onPeakCost || 0;
+                            facilityTouMidKwh += meterTou.midPeakKwh || 0;
+                            facilityTouMidCost += meterTou.midPeakCost || 0;
+                            facilityTouOffKwh += meterTou.offPeakKwh || 0;
+                            facilityTouOffCost += meterTou.offPeakCost || 0;
+                            facilityTouSuperOffKwh += meterTou.superOffPeakKwh || 0;
+                            facilityTouSuperOffCost += meterTou.superOffPeakCost || 0;
+                        }
+                    }
+                    
                     for (const meter of meters) {
                         const meterNumber = meter.meterNumber || meter.meter_number || 'unknown';
                         // Sum each meter's Avg $/day for facility total
@@ -11219,34 +11450,74 @@
                     totalMeters += (account.meters || []).length;
                 }
                 
-                // Facility-wide totals banner (blue, same style as account sections)
+                // Facility-wide totals banner (glassmorphism style)
                 html += `
-                    <div style="background: linear-gradient(135deg, #1565c0, #1976d2); color: white; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
-                        <div style="font-weight: 700; font-size: 1.1rem;">${primaryUtility}</div>
-                        <div style="display: inline-block; background: rgba(255,255,255,0.2); border-radius: 12px; padding: 0.25rem 0.75rem; font-size: 0.8rem; margin: 0.5rem 0;">
-                            ${data.accounts.length} account${data.accounts.length !== 1 ? 's' : ''} • ${facilityBillCount} bill${facilityBillCount !== 1 ? 's' : ''}${dateRangePill ? ` • ${dateRangePill}` : ''}
+                    <div class="facility-glass-container">
+                        <div class="facility-glass-header">
+                            <div class="facility-glass-utility">${primaryUtility}</div>
+                            <div class="facility-glass-pill">
+                                ${data.accounts.length} account${data.accounts.length !== 1 ? 's' : ''} • ${facilityBillCount} bill${facilityBillCount !== 1 ? 's' : ''}${dateRangePill ? ` • ${dateRangePill}` : ''}
+                            </div>
+                            <div class="facility-glass-section-title">
+                                <span>🏢</span> <span>Facility Summary</span>
+                            </div>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0 0.75rem; font-size: 0.9rem; opacity: 0.95;">
-                            <span>📊</span> <span>All Meters (${totalMeters})</span>
-                        </div>
-                        <div class="facility-stats-grid">
-                            <div style="background: rgba(255,255,255,0.15); border-radius: 6px; padding: 0.5rem;">
+                        <div class="facility-glass-stats">
+                            <div class="facility-glass-stat">
                                 <div class="stat-value">${formatBillValue(facilityTotalKwh, 'kwh')}</div>
                                 <div class="stat-label">Total kWh</div>
                             </div>
-                            <div style="background: rgba(255,255,255,0.15); border-radius: 6px; padding: 0.5rem;">
+                            <div class="facility-glass-stat">
                                 <div class="stat-value">${formatBillValue(facilityTotalCost, 'cost')}</div>
                                 <div class="stat-label">Total Cost</div>
                             </div>
-                            <div style="background: rgba(255,255,255,0.15); border-radius: 6px; padding: 0.5rem;">
+                            <div class="facility-glass-stat">
                                 <div class="stat-value">${formatBillValue(facilityBlendedRate, 'rate')}</div>
                                 <div class="stat-label">Rate/kWh</div>
                             </div>
-                            <div style="background: rgba(255,255,255,0.15); border-radius: 6px; padding: 0.5rem;">
+                            <div class="facility-glass-stat">
                                 <div class="stat-value">${formatBillValue(facilityAvgCostPerDay, 'avgDay')}</div>
                                 <div class="stat-label">Avg/Day</div>
                             </div>
                         </div>
+                        ${(() => {
+                            // Build TOU summary section if any TOU data exists
+                            const hasTOU = facilityTouOnKwh > 0 || facilityTouMidKwh > 0 || facilityTouOffKwh > 0 || facilityTouSuperOffKwh > 0;
+                            if (!hasTOU) return '';
+                            
+                            const totalTouKwh = facilityTouOnKwh + facilityTouMidKwh + facilityTouOffKwh + facilityTouSuperOffKwh;
+                            
+                            // TOU config with class names for glassmorphism cards
+                            const touItems = [
+                                { kwh: facilityTouOnKwh, cost: facilityTouOnCost, cssClass: 'tou-on-peak', barColor: '#dc2626', label: 'ON PEAK' },
+                                { kwh: facilityTouMidKwh, cost: facilityTouMidCost, cssClass: 'tou-mid-peak', barColor: '#f59e0b', label: 'MID PEAK' },
+                                { kwh: facilityTouOffKwh, cost: facilityTouOffCost, cssClass: 'tou-off-peak', barColor: '#22c55e', label: 'OFF PEAK' },
+                                { kwh: facilityTouSuperOffKwh, cost: facilityTouSuperOffCost, cssClass: 'tou-super-off', barColor: '#3b82f6', label: 'SUPER OFF-PEAK' }
+                            ].filter(t => t.kwh > 0);
+                            
+                            // Build percentage bar with glassmorphism styling
+                            let barHtml = '<div class="facility-glass-tou-bar">';
+                            touItems.forEach(t => {
+                                const pct = totalTouKwh > 0 ? (t.kwh / totalTouKwh * 100) : 0;
+                                if (pct > 0) barHtml += '<div style="width: ' + pct + '%; background: ' + t.barColor + ';"></div>';
+                            });
+                            barHtml += '</div>';
+                            
+                            // Build TOU cards with glassmorphism styling
+                            let cardsHtml = '<div class="facility-glass-tou-cards">';
+                            touItems.forEach(t => {
+                                const rate = t.kwh > 0 ? ((t.cost / t.kwh) * 100).toFixed(1) : '0.0';
+                                cardsHtml += '<div class="facility-glass-tou-card ' + t.cssClass + '">';
+                                cardsHtml += '<div class="tou-label">' + t.label + '</div>';
+                                cardsHtml += '<div class="tou-kwh">' + formatBillValue(t.kwh, 'kwh') + '</div>';
+                                cardsHtml += '<div class="tou-cost">' + formatBillValue(t.cost, 'cost') + '</div>';
+                                cardsHtml += '<div class="tou-rate">' + rate + '¢/kWh</div>';
+                                cardsHtml += '</div>';
+                            });
+                            cardsHtml += '</div>';
+                            
+                            return '<div class="facility-glass-tou"><div class="facility-glass-section-title"><span>⚡</span> <span>Time-of-Use Breakdown</span></div>' + barHtml + cardsHtml + '</div>';
+                        })()}
                     </div>
                 `;
                 

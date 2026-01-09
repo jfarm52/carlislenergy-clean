@@ -370,4 +370,3 @@ def _migrate_backfill_service_type_from_payload(conn):
         print(f"[bills_db] Service type backfill migration error (non-fatal): {e}")
         conn.rollback()
 
-
