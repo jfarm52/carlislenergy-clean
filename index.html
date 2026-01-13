@@ -10966,7 +10966,7 @@
                             <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.85rem; color: #666; cursor: pointer;">
                                 <input type="checkbox" id="embeddedBillSelectAll" style="cursor: pointer;"> Select All
                             </label>
-                            <button id="embeddedBillCancelSelected" class="button" style="font-size: 0.8rem; padding: 0.3rem 0.6rem; display: none; background-color: #f0ad4e; color: white;">
+                            <button id="embeddedBillCancelSelected" class="button" style="font-size: 0.8rem; padding: 0.3rem 0.6rem; display: none; background-color: rgba(120, 120, 130, 0.85); color: white; backdrop-filter: blur(4px);">
                                 Cancel Selected
                             </button>
                             <button id="embeddedBillDeleteSelected" class="button danger" style="font-size: 0.8rem; padding: 0.3rem 0.6rem; display: none;">
@@ -11031,7 +11031,7 @@
                                     </div>
                                 </div>
                                 <button class="embedded-file-view-btn" data-file-id="${file.id}" title="View">View</button>
-                                <button class="embedded-file-cancel-btn" data-file-id="${file.id}" data-status="${statusClass}" title="Cancel Processing" style="background-color: #f0ad4e; color: white; display: ${statusClass === 'processing' || statusClass === 'waiting' ? 'inline-block' : 'none'};">Cancel</button>
+                                <button class="embedded-file-cancel-btn" data-file-id="${file.id}" data-status="${statusClass}" title="Cancel Processing" style="background-color: rgba(120, 120, 130, 0.85); color: white; backdrop-filter: blur(4px); display: ${statusClass === 'processing' || statusClass === 'waiting' ? 'inline-block' : 'none'};">Cancel</button>
                                 <button class="embedded-file-delete-btn" data-file-id="${file.id}" data-has-extracted="${hasExtractedData}" title="Delete">Delete</button>
                             </div>
                         `;
