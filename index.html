@@ -22,8 +22,12 @@
             padding: 0;
             background-color: #f2f2f2;
             color: #333;
-            max-width: 100%;
+            max-width: 100vw;
             overflow-x: hidden;
+            box-sizing: border-box;
+        }
+        *, *::before, *::after {
+            box-sizing: inherit;
         }
         header {
             background: linear-gradient(135deg, #1e5a99 0%, #2d7bb8 50%, #5ca3d6 100%);
@@ -42,6 +46,9 @@
         }
         .container {
             padding: 1rem;
+            max-width: 1600px;
+            margin: 0 auto;
+            box-sizing: border-box;
         }
         h2 {
             margin-top: 1.5rem;
@@ -153,6 +160,7 @@
             flex-wrap: wrap;
             gap: 1rem;
             margin-top: 1rem;
+            justify-content: center;
         }
         .card {
             background-color: #fff;
@@ -161,6 +169,7 @@
             border: 2px solid #555;
             padding: 0.75rem 1rem;
             width: calc(50% - 1rem);
+            max-width: 600px;
             position: relative;
             user-select: none;
             -webkit-user-select: none;
@@ -4593,7 +4602,7 @@
     </div>
     
     <!-- ==================== CURRENT PROJECT VIEW ==================== -->
-    <div id="currentProjectView" class="app-view current-project-view active">
+    <div id="currentProjectView" class="app-view current-project-view">
         <!-- The header, topInfoBar, siteSection, dataSection are all inside this view -->
 
         <header>
@@ -6467,35 +6476,55 @@
                     ProjectState.siteData.visitDate = siteData.visitDate;
                 }
                 
-                // Initial navigation based on URL path (support both path and legacy hash)
-                setTimeout(() => {
-                    // If there's a projectId in the URL, skip navigation here - loadProjectById will handle it
-                    const urlParams = new URLSearchParams(window.location.search);
-                    if (urlParams.get('projectId')) {
-                        console.log('[nav] Deep link detected - deferring navigation to loadProjectById');
-                        return;
-                    }
-                    
-                    let path = window.location.pathname.replace(/^\//, '');
-                    const hash = window.location.hash.replace('#', '');
-                    
-                    // Handle encoded hash URLs (e.g., /%23home -> /home)
-                    if (path.startsWith('%23') || path.startsWith('#')) {
-                        const cleanPath = path.replace(/^(%23|#)/, '');
-                        window.history.replaceState(null, '', '/' + cleanPath);
-                        path = cleanPath;
-                    }
-                    
-                    // Handle legacy hash URLs by redirecting to path
-                    if (hash && !path) {
-                        window.history.replaceState(null, '', '/' + hash);
-                        this.handlePathChange();
-                    } else if (path) {
+                // IMMEDIATELY set view based on URL path (no delay - prevents flash of wrong view)
+                const urlParams = new URLSearchParams(window.location.search);
+                const projectIdParam = urlParams.get('projectId');
+                
+                let path = window.location.pathname.replace(/^\//, '');
+                const hash = window.location.hash.replace('#', '');
+                
+                // Handle encoded hash URLs (e.g., /%23home -> /home)
+                if (path.startsWith('%23') || path.startsWith('#')) {
+                    const cleanPath = path.replace(/^(%23|#)/, '');
+                    window.history.replaceState(null, '', '/' + cleanPath);
+                    path = cleanPath;
+                }
+                
+                // Handle legacy hash URLs by redirecting to path
+                if (hash && !path) {
+                    window.history.replaceState(null, '', '/' + hash);
+                    path = hash;
+                }
+                
+                // Log for debugging
+                console.log('[nav] Initial navigation:', { path, hash, projectIdParam });
+                
+                // If there's a projectId in the URL, load it first before rendering the view
+                if (projectIdParam) {
+                    console.log('[nav] Loading project from URL param:', projectIdParam);
+                    // Load project asynchronously - view will be set after load
+                    loadProjectFromService(projectIdParam).then((loaded) => {
+                        if (loaded) {
+                            // Project loaded - set the view based on path
+                            if (path) {
+                                this.handlePathChange();
+                            } else {
+                                this.setView('currentProject');
+                            }
+                        } else {
+                            // Project load failed - go to home
+                            console.warn('[nav] Failed to load project from URL, redirecting to home');
+                            this.setView('home');
+                        }
+                    });
+                } else {
+                    // No project ID - just set the view based on path
+                    if (path) {
                         this.handlePathChange();
                     } else {
                         this.setView('home');
                     }
-                }, 100);
+                }
             },
             
             // Setup hamburger drawer
@@ -6537,7 +6566,8 @@
             },
             
             handlePathChange() {
-                const path = window.location.pathname.replace(/^\//, '') || 'home';
+                const rawPath = window.location.pathname.replace(/^\//, '');
+                const path = rawPath || 'home';
                 
                 // Map path to view
                 const pathToView = {
@@ -6550,10 +6580,20 @@
                     'print': 'printView'
                 };
                 
-                const view = pathToView[path] || 'home';
-                if (view !== this.currentView) {
-                    this.setView(view, false); // false = don't update URL again
+                const view = pathToView[path];
+                
+                // If unknown path, redirect to home
+                if (!view) {
+                    console.log('[nav] Unknown path:', path, '- redirecting to home');
+                    window.history.replaceState(null, '', '/home');
+                    this.setView('home', false);
+                    return;
                 }
+                
+                // ALWAYS set view on path change (including initial load)
+                // The old check `view !== this.currentView` would skip setting 'home' on initial load
+                // because currentView is initialized to 'home', causing a blank page
+                this.setView(view, false); // false = don't update URL again
             },
             
             // Set current view
@@ -6583,6 +6623,7 @@
                 this.currentView = viewName;
                 
                 // Update URL path (using pushState for clean URLs)
+                // PRESERVE query parameters (e.g., ?projectId=xxx) when changing paths
                 if (updateHash) {
                     const viewToPath = {
                         'home': '/home',
@@ -6595,7 +6636,9 @@
                     };
                     const newPath = viewToPath[viewName] || '/home';
                     if (window.location.pathname !== newPath) {
-                        window.history.pushState(null, '', newPath);
+                        // Preserve query string when changing path
+                        const queryString = window.location.search;
+                        window.history.pushState(null, '', newPath + queryString);
                     }
                 }
                 
@@ -8032,9 +8075,19 @@
             },
             
             async renderBillsView() {
+                // Wait for config to load before checking billsFeatureEnabled
+                // This prevents incorrect redirects on initial page load
+                if (!this._configLoaded) {
+                    console.log('[bills view] Waiting for config to load...');
+                    // Wait up to 2 seconds for config
+                    for (let i = 0; i < 20 && !this._configLoaded; i++) {
+                        await new Promise(r => setTimeout(r, 100));
+                    }
+                }
+                
                 if (!this.billsFeatureEnabled) {
                     showToast('Utility Bills feature is not enabled.', 'warning');
-                    this.setView('currentProject');
+                    this.setView('home');
                     return;
                 }
                 
@@ -8404,7 +8457,7 @@
                                 html += `
                                     <div class="bills-month-row" data-bill-id="${billId}" onclick="NavigationController.toggleBillDetail(this, ${billId})">
                                         <span class="month-label">${periodLabel}</span>
-                                        <span class="month-value">${formatBillValue(billKwh, 'kwh')} kWh</span>
+                                        <span class="month-value">${formatBillValue(billKwh, 'kwh')}</span>
                                         <span class="month-value">${formatBillValue(billCost, 'cost')}</span>
                                         <span class="month-value">${formatBillValue(billRateVal, 'rate')}/kWh</span>
                                         <span class="expand-icon">▶</span>
@@ -8538,7 +8591,7 @@
                         html += `
                             <div class="bills-tou-item ${colorClass}">
                                 <div class="period-name">${periodName}</div>
-                                <div class="period-kwh">${formatBillValue(kwh, 'kwh')} kWh</div>
+                                <div class="period-kwh">${formatBillValue(kwh, 'kwh')}</div>
                                 <div class="period-rate">${formatBillValue(rateCents, 'rate')}/kWh</div>
                                 ${cost != null ? `<div class="period-cost">${formatBillValue(cost, 'cost')}</div>` : ''}
                             </div>
@@ -8556,7 +8609,7 @@
                         html += `
                             <div class="bills-tou-item tou-highest">
                                 <div class="period-name">On-Peak</div>
-                                <div class="period-kwh">${formatBillValue(tou.onPeakKwh, 'kwh')} kWh</div>
+                                <div class="period-kwh">${formatBillValue(tou.onPeakKwh, 'kwh')}</div>
                                 <div class="period-rate">${formatBillValue(onRateCents, 'rate')}/kWh</div>
                             </div>
                         `;
@@ -8567,7 +8620,7 @@
                         html += `
                             <div class="bills-tou-item tou-mid">
                                 <div class="period-name">Mid-Peak</div>
-                                <div class="period-kwh">${formatBillValue(tou.midPeakKwh, 'kwh')} kWh</div>
+                                <div class="period-kwh">${formatBillValue(tou.midPeakKwh, 'kwh')}</div>
                                 <div class="period-rate">${formatBillValue(midRateCents, 'rate')}/kWh</div>
                             </div>
                         `;
@@ -8578,7 +8631,7 @@
                         html += `
                             <div class="bills-tou-item tou-low">
                                 <div class="period-name">Off-Peak</div>
-                                <div class="period-kwh">${formatBillValue(tou.offPeakKwh, 'kwh')} kWh</div>
+                                <div class="period-kwh">${formatBillValue(tou.offPeakKwh, 'kwh')}</div>
                                 <div class="period-rate">${formatBillValue(offRateCents, 'rate')}/kWh</div>
                             </div>
                         `;
@@ -8589,7 +8642,7 @@
                         html += `
                             <div class="bills-tou-item tou-low">
                                 <div class="period-name">Super Off</div>
-                                <div class="period-kwh">${formatBillValue(tou.superOffPeakKwh, 'kwh')} kWh</div>
+                                <div class="period-kwh">${formatBillValue(tou.superOffPeakKwh, 'kwh')}</div>
                                 <div class="period-rate">${formatBillValue(superOffRateCents, 'rate')}/kWh</div>
                                 <div class="period-cost">${formatBillValue(tou.superOffPeakCost, 'cost')}</div>
                             </div>
@@ -8639,8 +8692,8 @@
                         <div class="account-number" style="font-size: 0.85rem; opacity: 0.85;">Account: ${d.customer_account || bill.account_number || 'N/A'}</div>
                     </div>`;
                     
-                    // Bill Summary Section
-                    detailedHtml += this.renderBillSummarySection(d);
+                    // Bill Summary Section - pass file_id for View Bill button (not bill.id which is different)
+                    detailedHtml += this.renderBillSummarySection(d, bill.file_id);
                     
                     // Usage Summary Section
                     detailedHtml += this.renderUsageSummarySection(d);
@@ -8676,7 +8729,7 @@
                 });
             },
             
-            renderBillSummarySection(d) {
+            renderBillSummarySection(d, billId = null) {
                 const rawPeriodStart = d.billing_period_start;
                 const rawPeriodEnd = d.billing_period_end;
                 const periodStart = rawPeriodStart ? new Date(rawPeriodStart).toLocaleDateString() : '-';
@@ -8684,11 +8737,21 @@
                 const dueDate = d.due_date ? new Date(d.due_date).toLocaleDateString() : '-';
                 const computedDays = computeDaysInPeriod(d.days_in_period, rawPeriodStart, rawPeriodEnd);
                 
+                // View Bill and Edit buttons if we have a billId
+                const actionBtns = billId ? `
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button onclick="window.openBillReviewEdit(${billId}); event.stopPropagation();" style="background: #666; color: white; border: none; border-radius: 4px; padding: 0.35rem 0.75rem; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.25rem;">✏️ Edit</button>
+                        <button onclick="window.viewBillPdf(${billId}); event.stopPropagation();" style="background: #1565c0; color: white; border: none; border-radius: 4px; padding: 0.35rem 0.75rem; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.25rem;">📄 View Bill</button>
+                    </div>` : '';
+                
                 return `
                     <div class="bill-detail-section">
-                        <div class="bill-detail-header">
-                            <span>📋 Bill Summary</span>
-                            <span class="toggle-icon">▼</span>
+                        <div class="bill-detail-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="display: flex; align-items: center; gap: 0.5rem;">
+                                <span>📋 Bill Summary</span>
+                                <span class="toggle-icon">▼</span>
+                            </span>
+                            ${actionBtns}
                         </div>
                         <div class="bill-detail-content">
                             <div class="bill-summary-grid">
@@ -8734,9 +8797,9 @@
                 if (hasToU) {
                     touHtml = `
                         <div class="tou-breakdown">
-                            ${d.kwh_on_peak ? `<div class="tou-item on-peak"><div class="period">On-Peak</div><div class="kwh">${formatBillValue(d.kwh_on_peak, 'kwh')} kWh</div></div>` : ''}
-                            ${d.kwh_mid_peak ? `<div class="tou-item mid-peak"><div class="period">Mid-Peak</div><div class="kwh">${formatBillValue(d.kwh_mid_peak, 'kwh')} kWh</div></div>` : ''}
-                            ${d.kwh_off_peak ? `<div class="tou-item off-peak"><div class="period">Off-Peak</div><div class="kwh">${formatBillValue(d.kwh_off_peak, 'kwh')} kWh</div></div>` : ''}
+                            ${d.kwh_on_peak ? `<div class="tou-item on-peak"><div class="period">On-Peak</div><div class="kwh">${formatBillValue(d.kwh_on_peak, 'kwh')}</div></div>` : ''}
+                            ${d.kwh_mid_peak ? `<div class="tou-item mid-peak"><div class="period">Mid-Peak</div><div class="kwh">${formatBillValue(d.kwh_mid_peak, 'kwh')}</div></div>` : ''}
+                            ${d.kwh_off_peak ? `<div class="tou-item off-peak"><div class="period">Off-Peak</div><div class="kwh">${formatBillValue(d.kwh_off_peak, 'kwh')}</div></div>` : ''}
                         </div>
                     `;
                 }
@@ -9626,7 +9689,7 @@
                 }
             },
             
-            async openBillReview(projectId, fileId) {
+            async openBillReview(projectId, fileId, startInEditMode = false) {
                 try {
                     const response = await fetch(`/api/projects/${projectId}/bills/files/${fileId}/review`);
                     const data = await response.json();
@@ -9647,6 +9710,11 @@
                     
                     const modal = document.getElementById('billReviewModal');
                     if (modal) modal.classList.add('show');
+                    
+                    // If starting in edit mode, toggle it on after modal is shown
+                    if (startInEditMode) {
+                        this.toggleEditMode();
+                    }
                 } catch (e) {
                     console.error('[bills] Review load error:', e);
                     this.showToast('Failed to load bill review', 'error');
@@ -10048,8 +10116,12 @@
                 
                 // Get first account for bill-level fields
                 const firstAccount = accounts[0] || {};
+                const detailedData = payload.detailed_data || {};
                 const utilityName = firstAccount.utility_name || payload.utility_name || '';
-                const accountNumber = firstAccount.account_number || payload.account_number || '';
+                // Look for account number in multiple places (different extraction formats store it differently)
+                const accountNumber = firstAccount.account_number || payload.account_number || 
+                                      payload.service_account || payload.customer_account ||
+                                      detailedData.service_account || detailedData.customer_account || '';
                 
                 // Bill-Level Fields Section
                 html += '<div class="bill-level-fields"><h5>📋 Bill Information</h5><div class="bill-field-row">';
@@ -10058,7 +10130,6 @@
                 const accountMissing = !accountNumber ? 'field-missing' : '';
                 
                 // Get due_date and rate_schedule from payload or detailed_data
-                const detailedData = payload.detailed_data || {};
                 const dueDate = payload.due_date || detailedData.due_date || '';
                 const rateSchedule = payload.rate_schedule || detailedData.rate_schedule || detailedData.rate || '';
                 const dueDateMissing = !dueDate ? 'field-missing' : '';
@@ -10225,7 +10296,7 @@
                 
                 // Add detailed data sections if available (keep visible even in edit mode so users can confirm fixes)
                 if (detailedData && Object.keys(detailedData).length > 0) {
-                    html += this.renderReviewDetailedSections(detailedData);
+                    html += this.renderReviewDetailedSections(detailedData, this._isEditMode);
                 }
                 
                 dataEl.innerHTML = html;
@@ -10262,7 +10333,7 @@
                 if (editBtn) editBtn.textContent = this._isEditMode ? '✖️ Cancel Edit' : '✏️ Edit';
             },
             
-            renderReviewDetailedSections(d) {
+            renderReviewDetailedSections(d, isEditMode = false) {
                 let html = '<div class="bill-review-detailed" style="margin-top: 1.25rem;">';
                 html += '<h5 style="margin-bottom: 0.75rem; color: #1e5a99; border-bottom: 1px solid #e0e0e0; padding-bottom: 0.5rem;">📊 Detailed Extraction Data</h5>';
                 
@@ -10275,6 +10346,15 @@
                 const amountDueVal = d.amount_due ?? d.total_amount_due ?? d.total_cost;
                 const fmt = (v) => formatBillValue(v, 'cost');
                 const computedDays = computeDaysInPeriod(d.days_in_period, periodStartRaw, periodEndRaw);
+                
+                // Editable field helper
+                const editableField = (fieldName, value, type = 'number', step = '0.01') => {
+                    if (isEditMode) {
+                        const inputVal = value != null ? value : '';
+                        return `<input type="${type}" step="${step}" data-field="${fieldName}" value="${inputVal}" style="width: 100%; padding: 0.3rem 0.5rem; border: 1px solid #1976d2; border-radius: 4px; font-size: 0.9rem;">`;
+                    }
+                    return `<span>${type === 'number' ? fmt(value) : value || '-'}</span>`;
+                };
                 
                 html += `
                     <div class="bill-detail-section">
@@ -10297,8 +10377,8 @@
                                     <span>${periodStart} - ${periodEnd} (${computedDays ?? '-'} days)</span>
                                 </div>
                                 <div class="bill-summary-item highlight">
-                                    <label>Amount Due</label>
-                                    <span>${fmt(amountDueVal)}</span>
+                                    <label>Amount Due ($)</label>
+                                    ${editableField('amount_due', amountDueVal)}
                                 </div>
                                 <div class="bill-summary-item">
                                     <label>Due Date</label>
@@ -10325,9 +10405,9 @@
                 let touHtml = '';
                 if (hasToU) {
                     touHtml = `<div class="tou-breakdown">
-                        ${d.kwh_on_peak ? `<div class="tou-item on-peak"><div class="period">On-Peak</div><div class="kwh">${formatBillValue(d.kwh_on_peak, 'kwh')} kWh</div></div>` : ''}
-                        ${d.kwh_mid_peak ? `<div class="tou-item mid-peak"><div class="period">Mid-Peak</div><div class="kwh">${formatBillValue(d.kwh_mid_peak, 'kwh')} kWh</div></div>` : ''}
-                        ${d.kwh_off_peak ? `<div class="tou-item off-peak"><div class="period">Off-Peak</div><div class="kwh">${formatBillValue(d.kwh_off_peak, 'kwh')} kWh</div></div>` : ''}
+                        ${d.kwh_on_peak ? `<div class="tou-item on-peak"><div class="period">On-Peak</div><div class="kwh">${formatBillValue(d.kwh_on_peak, 'kwh')}</div></div>` : ''}
+                        ${d.kwh_mid_peak ? `<div class="tou-item mid-peak"><div class="period">Mid-Peak</div><div class="kwh">${formatBillValue(d.kwh_mid_peak, 'kwh')}</div></div>` : ''}
+                        ${d.kwh_off_peak ? `<div class="tou-item off-peak"><div class="period">Off-Peak</div><div class="kwh">${formatBillValue(d.kwh_off_peak, 'kwh')}</div></div>` : ''}
                     </div>`;
                 }
                 
@@ -10343,6 +10423,11 @@
                     </div>`;
                 }
                 
+                // Editable kWh field
+                const kwhEditField = isEditMode 
+                    ? `<input type="number" step="0.01" data-field="kwh_total" value="${totalKwh != null ? totalKwh : ''}" style="width: 80px; padding: 0.3rem 0.5rem; border: 1px solid #1976d2; border-radius: 4px; font-size: 0.9rem; text-align: center;">`
+                    : `<div class="value">${formatBillValue(totalKwh, 'kwh')}</div>`;
+                
                 html += `
                     <div class="bill-detail-section">
                         <div class="bill-detail-header">
@@ -10352,7 +10437,7 @@
                         <div class="bill-detail-content">
                             <div class="bill-usage-summary">
                                 <div class="usage-stat">
-                                    <div class="value">${formatBillValue(totalKwh, 'kwh')}</div>
+                                    ${kwhEditField}
                                     <div class="label">Total kWh</div>
                                 </div>
                                 <div class="usage-stat">
@@ -10555,6 +10640,28 @@
                         }
                     }
                 });
+                
+                // Capture editable fields from detailed sections (kwh_total, amount_due)
+                const kwhTotalInput = dataEl.querySelector('input[data-field="kwh_total"]');
+                const amountDueInput = dataEl.querySelector('input[data-field="amount_due"]');
+                
+                if (kwhTotalInput) {
+                    const kwhVal = kwhTotalInput.value.trim();
+                    const kwhNum = kwhVal ? parseFloat(kwhVal) : null;
+                    payload.kwh_total = kwhNum;
+                    if (!payload.detailed_data) payload.detailed_data = {};
+                    payload.detailed_data.kwh_total = kwhNum;
+                }
+                
+                if (amountDueInput) {
+                    const amountVal = amountDueInput.value.trim();
+                    const amountNum = amountVal ? parseFloat(amountVal) : null;
+                    payload.amount_due = amountNum;
+                    payload.total_amount_due = amountNum;
+                    if (!payload.detailed_data) payload.detailed_data = {};
+                    payload.detailed_data.amount_due = amountNum;
+                    payload.detailed_data.total_amount_due = amountNum;
+                }
                 
                 // Ensure accounts array is updated in payload
                 payload.accounts = accounts;
@@ -10824,6 +10931,16 @@
                 
                 console.log('[loadProjectFromService] Loaded project:', projectId);
                 
+                // CRITICAL: Update URL with projectId so refresh works
+                updateUrlWithProjectId(projectId);
+                
+                // Also store in localStorage as backup
+                try {
+                    localStorage.setItem('lastProjectId', projectId);
+                } catch (e) {
+                    console.warn('[loadProjectFromService] Failed to store lastProjectId:', e);
+                }
+                
                 // Render embedded bills section
                 if (typeof renderEmbeddedBillsSection === 'function') {
                     renderEmbeddedBillsSection();
@@ -11036,7 +11153,7 @@
                                     </div>
                                 </div>
                                 <button class="embedded-file-view-btn" data-file-id="${file.id}" title="View">View</button>
-                                <button class="embedded-file-cancel-btn" data-file-id="${file.id}" data-status="${statusClass}" title="Cancel Processing" style="display: ${statusClass === 'processing' || statusClass === 'waiting' ? 'inline-block' : 'none'};">Cancel</button>
+                                <button class="embedded-file-cancel-btn" data-file-id="${file.id}" data-status="${statusClass}" title="Cancel/Re-process">Cancel</button>
                                 <button class="embedded-file-delete-btn" data-file-id="${file.id}" data-has-extracted="${hasExtractedData}" title="Delete">Delete</button>
                             </div>
                         `;
@@ -11479,8 +11596,20 @@
                 const facilityBlendedRate = facilityTotalKwh > 0 ? (facilityTotalCost / facilityTotalKwh) * 100 : 0;
                 const facilityAvgCostPerDay = facilitySumAvgPerDay;
                 
-                // Get utility name from first account for header
-                const primaryUtility = data.accounts[0]?.utilityName || data.accounts[0]?.utility_name || 'Electric Utility';
+                // Get all unique utilities with counts for header
+                const utilityCounts = {};
+                for (const account of data.accounts) {
+                    const utilityName = account.utilityName || account.utility_name || 'Electric Utility';
+                    const billCount = (account.meters || []).reduce((sum, m) => sum + (m.bills || []).length, 0);
+                    if (!utilityCounts[utilityName]) utilityCounts[utilityName] = 0;
+                    utilityCounts[utilityName] += billCount;
+                }
+                // Build utility display string: "SCE (9) & LADWP (1)" or just "SCE" if single utility
+                // Sort by bill count descending (most bills first)
+                const utilityEntries = Object.entries(utilityCounts).sort((a, b) => b[1] - a[1]);
+                const primaryUtility = utilityEntries.length === 1 
+                    ? utilityEntries[0][0]
+                    : utilityEntries.map(([name, count]) => `${name} (${count})`).join(' & ');
                 
                 // Build account list for header
                 // For LADWP, show full account number; for others, mask to last 4 digits
@@ -11653,7 +11782,7 @@
                                 </div>
                                 <div style="background: rgba(21, 101, 192, 0.1); padding: 0.5rem 1rem; font-size: 0.85rem; color: #555; display: flex; justify-content: space-between; align-items: center;">
                                     <span>${dateRangeLabel}</span>
-                                    ${bills.length > 1 ? `<span class="expand-all-bills-toggle" data-meter-id="${meterId}" title="Expand/Collapse all bills" style="cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 4px; border: 1px solid rgba(21, 101, 192, 0.3); background: rgba(255,255,255,0.5); color: #1565c0; font-size: 0.75rem; display: flex; align-items: center; gap: 0.25rem; user-select: none;"><span class="expand-all-icon" style="transition: transform 0.2s;">▼</span></span>` : ''}
+                                    ${bills.length > 1 ? `<span class="expand-all-bills-toggle" data-meter-id="${meterId}" title="Expand/Collapse all bills" style="cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 4px; border: 1px solid rgba(21, 101, 192, 0.3); background: rgba(255,255,255,0.5); color: #1565c0; font-size: 0.75rem; display: flex; align-items: center; gap: 0.25rem; user-select: none;"><span class="expand-all-icon" style="transition: transform 0.2s; transform: rotate(-90deg);">▼</span></span>` : ''}
                                 </div>
                                 <div class="embedded-meter-header" data-meter-id="${meterId}" style="background: #fff; padding: 0.75rem 1rem; cursor: pointer; border-bottom: 1px solid #e0e0e0;">
                                     <div class="embedded-meter-stats-row">
@@ -11742,44 +11871,63 @@
             localStorage.setItem('embeddedBillsFilesCollapsed', isHidden ? 'false' : 'true');
         };
         
+        // Quick access to view a bill's PDF from anywhere
+        window.viewBillPdf = function(fileId) {
+            if (!fileId) return;
+            // Call the existing PDF viewer function
+            if (typeof openBillPdfModal === 'function') {
+                openBillPdfModal(fileId, 'Bill PDF');
+            } else {
+                // Fallback: open in new tab
+                window.open(`/api/bills/file/${fileId}/pdf`, '_blank');
+            }
+        };
+        
         window.toggleEmbeddedMeter = function(meterId) {
             const billsContainer = document.getElementById(`embedded-meter-bills-${meterId}`);
-            const icon = document.querySelector(`.meter-expand-icon[data-meter-id="${meterId}"]`);
+            const meterIcon = document.querySelector(`.meter-expand-icon[data-meter-id="${meterId}"]`);
+            
             if (billsContainer) {
                 const isHidden = billsContainer.style.display === 'none' || !billsContainer.style.display;
                 billsContainer.style.display = isHidden ? 'block' : 'none';
                 // Arrow down (0deg) = expanded, Arrow right (-90deg) = collapsed
-                if (icon) icon.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(-90deg)';
+                // Only update the meter header icon - NOT the expand-all icon (keep them independent)
+                if (meterIcon) meterIcon.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(-90deg)';
             }
         };
         
         // Toggle all bill details within a meter section (expand or collapse all)
+        // This is the "# Bills" dropdown arrow - it ONLY controls bill row expansion, NOT the meter section
+        // - rotate(-90deg) = collapsed (horizontal arrow pointing right) - bills are in line-item view
+        // - rotate(0deg) = expanded (arrow pointing down) - bills show full details
         window.toggleAllBillsInMeter = function(meterId, toggleElement) {
             const billsContainer = document.getElementById(`embedded-meter-bills-${meterId}`);
             if (!billsContainer) return;
             
-            // First, make sure the meter section is expanded
+            const expandAllIcon = toggleElement ? toggleElement.querySelector('.expand-all-icon') : null;
+            
+            // First, make sure the meter section (Billing History) is visible
             if (billsContainer.style.display === 'none' || !billsContainer.style.display) {
-                window.toggleEmbeddedMeter(meterId);
+                billsContainer.style.display = 'block';
+                // Update ONLY the meter header icon when we expand it
+                const meterIcon = document.querySelector(`.meter-expand-icon[data-meter-id="${meterId}"]`);
+                if (meterIcon) meterIcon.style.transform = 'rotate(0deg)';
             }
             
             // Get all bill detail elements within this meter
             const billDetails = billsContainer.querySelectorAll('.embedded-bill-detail');
             const billRows = billsContainer.querySelectorAll('.embedded-bill-row');
             
-            // Check if any are currently expanded
-            let anyExpanded = false;
+            // Check if any bill details are currently expanded
+            let anyBillsExpanded = false;
             billDetails.forEach(detail => {
                 if (detail.style.display !== 'none') {
-                    anyExpanded = true;
+                    anyBillsExpanded = true;
                 }
             });
             
-            // Toggle icon in the expand-all button
-            const icon = toggleElement.querySelector('.expand-all-icon');
-            
-            if (anyExpanded) {
-                // Collapse all
+            if (anyBillsExpanded) {
+                // Collapse all bill details
                 billDetails.forEach(detail => {
                     detail.style.display = 'none';
                 });
@@ -11787,9 +11935,10 @@
                     const rowIcon = row.querySelector('.bill-expand-icon');
                     if (rowIcon) rowIcon.style.transform = 'rotate(0deg)';
                 });
-                if (icon) icon.style.transform = 'rotate(-90deg)';
+                // Only update THIS icon (the expand-all icon)
+                if (expandAllIcon) expandAllIcon.style.transform = 'rotate(-90deg)';
             } else {
-                // Expand all - trigger each bill to load its details
+                // Expand all bill details
                 billRows.forEach(row => {
                     const billId = row.dataset.billId;
                     if (billId) {
@@ -11799,7 +11948,8 @@
                         }
                     }
                 });
-                if (icon) icon.style.transform = 'rotate(0deg)';
+                // Only update THIS icon (the expand-all icon)
+                if (expandAllIcon) expandAllIcon.style.transform = 'rotate(0deg)';
             }
         };
         
@@ -11832,6 +11982,23 @@
             } else {
                 // Fallback: open PDF in new tab
                 window.open(`/api/bills/file/${fileId}/pdf`, '_blank');
+            }
+        };
+        
+        // Global function to open bill review modal directly in EDIT mode
+        window.openBillReviewEdit = function(fileId) {
+            const projectId = ProjectState.currentProjectId || ProjectState.project_id;
+            if (!projectId) {
+                console.error('[openBillReviewEdit] No project ID available');
+                return;
+            }
+            // Use NavigationController's openBillReview method with startInEditMode=true
+            if (typeof NavigationController !== 'undefined' && NavigationController.openBillReview) {
+                NavigationController.setupReviewModalHandlers(projectId);
+                NavigationController.openBillReview(projectId, fileId, true); // true = start in edit mode
+            } else {
+                // Fallback: just open the normal modal
+                window.openBillReviewModal(fileId);
             }
         };
         
@@ -11896,10 +12063,19 @@
                             const peakDemand = bill.demand || bill.peakDemand || bill.peak_demand || 0;
                             const hasDemand = peakDemand > 0;
                             
+                            // Get file ID for View Bill button (API returns billFileId)
+                            const fileId = bill.file_id || bill.fileId || bill.billFileId || billId;
+                            
                             let detailHtml = `
                                 <!-- Bill Summary Section -->
                                 <div style="background: white; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 0.75rem; overflow: hidden;">
-                                    <div style="background: #f5f5f5; padding: 0.5rem 0.75rem; font-weight: 600; color: #333; border-bottom: 1px solid #ddd;">📋 Bill Summary</div>
+                                    <div style="background: #f5f5f5; padding: 0.5rem 0.75rem; font-weight: 600; color: #333; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
+                                        <span>📋 Bill Summary</span>
+                                        <div style="display: flex; gap: 0.4rem;">
+                                            <button onclick="window.openBillReviewEdit(${fileId}); event.stopPropagation();" style="background: #666; color: white; border: none; border-radius: 4px; padding: 0.3rem 0.6rem; font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 0.25rem;">✏️ Edit</button>
+                                            <button onclick="window.viewBillPdf(${fileId}); event.stopPropagation();" style="background: #1565c0; color: white; border: none; border-radius: 4px; padding: 0.3rem 0.6rem; font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 0.25rem;">📄 View Bill</button>
+                                        </div>
+                                    </div>
                                     <div style="padding: 0.75rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; font-size: 0.85rem;">
                                         <div>
                                             <div style="color: #666; font-size: 0.75rem; text-transform: uppercase;">Service Address</div>
@@ -12004,7 +12180,7 @@
                                                     <div style="width: 10px; height: 10px; background: ${t.color}; border-radius: 2px;"></div>
                                                     <span style="font-size: 0.7rem; font-weight: 600; color: #555;">${t.label}</span>
                                                 </div>
-                                                <div style="font-size: 0.9rem; font-weight: 600; color: #333;">${formatBillValue(kwh, 'kwh')} kWh</div>
+                                                <div style="font-size: 0.9rem; font-weight: 600; color: #333;">${formatBillValue(kwh, 'kwh')}</div>
                                                 <div style="font-size: 0.8rem; color: #555;">${formatBillValue(cost, 'cost')}</div>
                                                 <div style="font-size: 0.75rem; color: #888;">${formatBillValue(parseFloat(rate), 'rate')}/kWh</div>
                                             </div>
@@ -12134,30 +12310,33 @@
                     });
                     if (!confirmed) return;
 
-                    let deleted = 0;
-                    let failed = 0;
-                    for (const fileId of fileIds) {
-                        console.log(`[embeddedBills] Deleting file ${fileId}...`);
+                    // Delete all files in PARALLEL for speed
+                    const deletePromises = fileIds.map(async (fileId) => {
                         try {
                             const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/files/${fileId}`, { method: 'DELETE' });
                             const result = await resp.json();
-                            console.log(`[embeddedBills] Delete response for ${fileId}:`, result);
-                            if (result.success) {
-                                deleted++;
-                                console.log(`[embeddedBills] Deleted count now: ${deleted}`);
-                                const row = document.querySelector(`.embedded-bill-file-row[data-file-id="${fileId}"]`);
-                                if (row) row.remove();
-                            } else {
-                                failed++;
-                                console.error('[embeddedBills] Delete failed:', result.error);
-                            }
+                            return { fileId, success: result.success, error: result.error };
                         } catch (err) {
-                            failed++;
-                            console.error('[embeddedBills] Delete error:', err);
+                            return { fileId, success: false, error: err.message };
                         }
-                    }
+                    });
 
-                    console.log(`[embeddedBills] Final counts - deleted: ${deleted}, failed: ${failed}`);
+                    const results = await Promise.all(deletePromises);
+                    
+                    // Collect successful and failed deletions
+                    const deletedIds = results.filter(r => r.success).map(r => r.fileId);
+                    const failedCount = results.filter(r => !r.success).length;
+                    
+                    console.log(`[embeddedBills] Parallel delete complete - deleted: ${deletedIds.length}, failed: ${failedCount}`);
+
+                    // Batch remove all deleted rows at once (prevents page jumping)
+                    deletedIds.forEach(fileId => {
+                        const row = document.querySelector(`.embedded-bill-file-row[data-file-id="${fileId}"]`);
+                        if (row) row.remove();
+                    });
+                    
+                    const deleted = deletedIds.length;
+                    const failed = failedCount;
 
                     // Show detailed message about deletions
                     if (deleted > 0 && failed === 0) {
@@ -12210,41 +12389,44 @@
                     });
                     if (!confirmed) return;
 
-                    let cancelled = 0;
-                    let failed = 0;
-                    for (const fileId of fileIds) {
+                    // Cancel all files in PARALLEL for speed
+                    const cancelPromises = fileIds.map(async (fileId) => {
                         try {
                             const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/files/${fileId}/cancel`, { method: 'POST' });
                             const result = await resp.json();
-                            if (result.success) {
-                                cancelled++;
-                                // Update row status immediately
-                                const row = document.querySelector(`.embedded-bill-file-row[data-file-id="${fileId}"]`);
-                                if (row) {
-                                    row.dataset.status = 'error';
-                                    const progressFill = row.querySelector('.progress-fill');
-                                    const progressText = row.querySelector('.progress-text');
-                                    const cancelBtn = row.querySelector('.embedded-file-cancel-btn');
-                                    if (progressFill) {
-                                        progressFill.classList.remove('processing', 'waiting');
-                                        progressFill.classList.add('error');
-                                    }
-                                    if (progressText) {
-                                        progressText.classList.remove('processing', 'waiting');
-                                        progressText.classList.add('error');
-                                        progressText.textContent = '✗ Cancelled';
-                                    }
-                                    if (cancelBtn) cancelBtn.style.display = 'none';
-                                }
-                            } else {
-                                failed++;
-                            }
+                            return { fileId, success: result.success };
                         } catch (err) {
-                            failed++;
                             console.error('[embeddedBills] Cancel error:', err);
+                            return { fileId, success: false };
                         }
-                    }
+                    });
 
+                    const results = await Promise.all(cancelPromises);
+                    const cancelledIds = results.filter(r => r.success).map(r => r.fileId);
+                    const failed = results.filter(r => !r.success).length;
+
+                    // Batch update all cancelled rows at once
+                    cancelledIds.forEach(fileId => {
+                        const row = document.querySelector(`.embedded-bill-file-row[data-file-id="${fileId}"]`);
+                        if (row) {
+                            row.dataset.status = 'error';
+                            const progressFill = row.querySelector('.progress-fill');
+                            const progressText = row.querySelector('.progress-text');
+                            const cancelBtn = row.querySelector('.embedded-file-cancel-btn');
+                            if (progressFill) {
+                                progressFill.classList.remove('processing', 'waiting');
+                                progressFill.classList.add('error');
+                            }
+                            if (progressText) {
+                                progressText.classList.remove('processing', 'waiting');
+                                progressText.classList.add('error');
+                                progressText.textContent = '✗ Cancelled';
+                            }
+                            if (cancelBtn) cancelBtn.style.display = 'none';
+                        }
+                    });
+
+                    const cancelled = cancelledIds.length;
                     if (cancelled > 0 && failed === 0) {
                         showToast(`${cancelled} file${cancelled === 1 ? '' : 's'} cancelled`, 'success');
                     } else if (cancelled > 0 && failed > 0) {

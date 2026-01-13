@@ -38,6 +38,7 @@ from bills_db import (
     upsert_utility_account,
     upsert_utility_meter,
 )
+from bill_intake.extraction.persistence import save_bill_to_normalized_tables
 
 
 def register(*, bills_bp, is_enabled, populate_normalized_tables):
@@ -656,14 +657,21 @@ def register(*, bills_bp, is_enabled, populate_normalized_tables):
                 corrected_payload["utility_name"] = utility_name
 
                 update_bill_file_extraction_payload(file_id, corrected_payload)
-                # Also sync corrected payload into normalized tables so:
-                # - embedded bills summaries populate
-                # - missing_fields/review_status recompute is based on up-to-date DB values
+                # Sync corrected payload into normalized bills table so UI updates reflect changes
+                # Use save_bill_to_normalized_tables which properly updates the bills table 
+                # (including total_kwh, total_amount_due) - not just meter reads
                 try:
-                    original_filename = file_record.get("original_filename") or file_record.get("filename") or "bill.pdf"
-                    populate_normalized_tables(project_id, corrected_payload, original_filename, file_id=file_id)
+                    result = save_bill_to_normalized_tables(file_id, project_id, corrected_payload)
+                    if result is False:
+                        print(f"[bills] WARNING: save_bill_to_normalized_tables returned False for file {file_id}")
+                        print(f"[bills] Payload keys: {list(corrected_payload.keys())}")
+                        print(f"[bills] kwh_total: {corrected_payload.get('kwh_total')}, account_number: {corrected_payload.get('account_number')}")
+                    else:
+                        print(f"[bills] Synced corrections to bills table for file {file_id}")
                 except Exception as sync_err:
-                    print(f"[bills] Warning: could not sync corrected payload into normalized tables: {sync_err}")
+                    import traceback
+                    print(f"[bills] ERROR syncing corrected payload into normalized tables: {sync_err}")
+                    traceback.print_exc()
 
                 missing = recompute_bill_file_missing_fields(file_id)
 

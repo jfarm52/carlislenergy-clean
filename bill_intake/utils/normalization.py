@@ -10,17 +10,35 @@ import re
 
 
 def normalize_account_number(raw):
-    """Strip spaces, punctuation; return digits only (or original falsy value)."""
+    """Strip spaces, punctuation; return digits only. Handle special cases."""
     if not raw:
-        return raw
-    return re.sub(r"[^0-9]", "", str(raw))
+        return "Unknown"
+    raw_str = str(raw).strip()
+    # Keep placeholder values as-is
+    if raw_str.upper() in ("UNKNOWN", "N/A", "NA", "NONE", ""):
+        return "Unknown"
+    # Extract digits only
+    digits = re.sub(r"[^0-9]", "", raw_str)
+    # If no digits found, return "Unknown"
+    if not digits:
+        return "Unknown"
+    return digits
 
 
 def normalize_meter_number(raw):
-    """Strip spaces, punctuation; return digits only (or original falsy value)."""
+    """Strip spaces, punctuation; return digits only. Handle special cases."""
     if not raw:
-        return raw
-    return re.sub(r"[^0-9]", "", str(raw))
+        return "Unknown"
+    raw_str = str(raw).strip()
+    # Keep placeholder values as-is
+    if raw_str.upper() in ("UNKNOWN", "N/A", "NA", "NONE", "PRIMARY", ""):
+        return "Unknown"
+    # Extract digits only
+    digits = re.sub(r"[^0-9]", "", raw_str)
+    # If no digits found, return "Unknown"
+    if not digits:
+        return "Unknown"
+    return digits
 
 
 def normalize_utility_name(raw: str | None) -> str:

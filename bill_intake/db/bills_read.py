@@ -114,7 +114,7 @@ def get_grouped_bills_data(project_id, service_filter=None):
                     if service_filter == "electric":
                         cur.execute(
                             """
-                            SELECT DISTINCT b.id, b.period_start, b.period_end,
+                            SELECT DISTINCT b.id, b.bill_file_id, b.period_start, b.period_end,
                                    b.total_kwh, b.total_amount_due,
                                    ubf.original_filename AS source_file
                             FROM bills b
@@ -143,6 +143,7 @@ def get_grouped_bills_data(project_id, service_filter=None):
                         meter_data["bills"].append(
                             {
                                 "id": read["id"],
+                                "file_id": read.get("bill_file_id"),  # File ID for PDF viewing
                                 "period_start": str(read.get("period_start")) if read.get("period_start") else None,
                                 "period_end": str(read.get("period_end")) if read.get("period_end") else None,
                                 "total_kwh": float(read.get("total_kwh")) if read.get("total_kwh") else None,
@@ -596,36 +597,57 @@ def get_bill_detail(bill_id):
 
             rate_schedule = b["rate_schedule"] or detailed_data.get("rate_schedule") or payload.get("rate_schedule")
 
-            cur.execute(
-                """
-                SELECT period, kwh, rate_dollars_per_kwh, est_cost_dollars
-                FROM bill_tou_periods
-                WHERE bill_id = %s
-                ORDER BY
-                    CASE period
-                        WHEN 'On-Peak' THEN 1
-                        WHEN 'Mid-Peak' THEN 2
-                        WHEN 'Off-Peak' THEN 3
-                        ELSE 4
-                    END
-                """,
-                (bill_id,),
-            )
-            tou_raw = cur.fetchall()
-
+            # Build touPeriods from bills table TOU columns (single source of truth)
+            # This avoids the bill_tou_periods table which may have incorrect data
             tou_periods = []
-            if tou_raw:
-                tou_periods = [
-                    {
-                        "period": t["period"],
-                        "kwh": float(t["kwh"]) if t["kwh"] else 0,
-                        "rateDollarsPerKwh": float(t["rate_dollars_per_kwh"])
-                        if t["rate_dollars_per_kwh"]
-                        else 0,
-                        "estCostDollars": float(t["est_cost_dollars"]) if t["est_cost_dollars"] else 0,
-                    }
-                    for t in tou_raw
-                ]
+
+            # On-Peak (typically summer afternoons)
+            if b["tou_on_kwh"]:
+                on_kwh = float(b["tou_on_kwh"])
+                on_cost = float(b["tou_on_cost"]) if b["tou_on_cost"] else 0
+                on_rate = on_cost / on_kwh if on_kwh > 0 else 0
+                tou_periods.append({
+                    "period": "On-Peak",
+                    "kwh": on_kwh,
+                    "rateDollarsPerKwh": float(b["tou_on_rate_dollars"]) if b["tou_on_rate_dollars"] else on_rate,
+                    "estCostDollars": on_cost,
+                })
+
+            # Mid-Peak
+            if b["tou_mid_kwh"]:
+                mid_kwh = float(b["tou_mid_kwh"])
+                mid_cost = float(b["tou_mid_cost"]) if b["tou_mid_cost"] else 0
+                mid_rate = mid_cost / mid_kwh if mid_kwh > 0 else 0
+                tou_periods.append({
+                    "period": "Mid-Peak",
+                    "kwh": mid_kwh,
+                    "rateDollarsPerKwh": float(b["tou_mid_rate_dollars"]) if b["tou_mid_rate_dollars"] else mid_rate,
+                    "estCostDollars": mid_cost,
+                })
+
+            # Off-Peak
+            if b["tou_off_kwh"]:
+                off_kwh = float(b["tou_off_kwh"])
+                off_cost = float(b["tou_off_cost"]) if b["tou_off_cost"] else 0
+                off_rate = off_cost / off_kwh if off_kwh > 0 else 0
+                tou_periods.append({
+                    "period": "Off-Peak",
+                    "kwh": off_kwh,
+                    "rateDollarsPerKwh": float(b["tou_off_rate_dollars"]) if b["tou_off_rate_dollars"] else off_rate,
+                    "estCostDollars": off_cost,
+                })
+
+            # Super Off-Peak (winter only, cheapest rate)
+            if b["tou_super_off_kwh"]:
+                super_kwh = float(b["tou_super_off_kwh"])
+                super_cost = float(b["tou_super_off_cost"]) if b["tou_super_off_cost"] else 0
+                super_rate = super_cost / super_kwh if super_kwh > 0 else 0
+                tou_periods.append({
+                    "period": "Super Off-Peak",
+                    "kwh": super_kwh,
+                    "rateDollarsPerKwh": float(b["tou_super_off_rate_dollars"]) if b["tou_super_off_rate_dollars"] else super_rate,
+                    "estCostDollars": super_cost,
+                })
 
             return {
                 "billId": b["id"],

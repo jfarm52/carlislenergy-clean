@@ -302,25 +302,37 @@ LADWP-SPECIFIC INSTRUCTIONS:
 
 SCE-SPECIFIC INSTRUCTIONS:
 1. UTILITY NAME: Southern California Edison bills may show "SCE" or "Southern California Edison" in the header. ALWAYS use "Southern California Edison" or "SCE" for utility_name, NEVER "LADWP" or other utilities.
-2. ACCOUNT NUMBER: SCE account numbers are typically 10-12 digits. Look for "Account Number" or "Acct#" near the top of the bill. Common SCE accounts in this project are 4369 and 6457. DO NOT confuse account numbers with meter numbers or POD IDs.
-3. METER DATA: SCE bills show electric meter information in the usage section. Look for:
+2. ACCOUNT NUMBER - CRITICAL: 
+   - SCE bills have TWO account numbers: "Customer account" and "Service account"
+   - ALWAYS prefer "Service account" (the 10-digit number like 8001053647) for customer_account
+   - If Service account is not visible, use Customer account as fallback
+   - DO NOT use "Rotating outage Group" or POD-ID as account numbers - those are NOT account numbers!
+   - The account number should be a pure numeric string (8-12 digits), not text like "Rotating"
+3. AMOUNT DUE - CRITICAL:
+   - Use "Amount due $XX,XXX.XX" shown prominently on page 1 (usually top right)
+   - Or use "Total amount you owe by [date] $XX,XXX.XX"
+   - DO NOT use "Your new charges" - that's only new charges, not the total owed!
+   - The amount_due should be the TOTAL amount owed, including any previous balance + late fees
+4. DUE DATE - CRITICAL:
+   - SCE shows "Due by MM/DD/YY" right below or next to "Amount due" on page 1
+   - Extract this as YYYY-MM-DD format
+5. METER DATA: SCE bills show electric meter information in the usage section. Look for:
    - Meter Number (usually format: E-XXXXXXX or similar)
    - Service Address for each meter
    - kWh usage per meter per billing period
    Each meter should have non-zero kWh values if it's an active electric meter.
-4. TOU (Time of Use): SCE uses "On-Peak", "Mid-Peak", "Off-Peak", and sometimes "Super Off-Peak" periods. Map these to:
+6. TOU (Time of Use): SCE uses "On-Peak", "Mid-Peak", "Off-Peak", and sometimes "Super Off-Peak" periods. Map these to:
    - On-Peak → kwh_on_peak, rate_on_peak_per_kwh
    - Mid-Peak → kwh_mid_peak, rate_mid_peak_per_kwh
    - Off-Peak → kwh_off_peak, rate_off_peak_per_kwh
    - Super Off-Peak → use tou fields if present
-5. RATE SCHEDULE: SCE rate schedules are SHORT CODES like "TOU-GS-2-E", "TOU-8-B", "TOU-GS-1-E". Look in these locations:
+7. RATE SCHEDULE: SCE rate schedules are SHORT CODES like "TOU-GS-2-E", "TOU-8-B", "TOU-GS-1-E". Look in these locations:
    - Near the account information header
    - In the "Electric Charges" section header
    - Below the service address
-   IMPORTANT: The rate schedule is a SHORT code (usually 5-15 characters), NOT a long description. If you find long text, it's NOT the rate schedule.
-6. DUE DATE: SCE bills show "Payment Due" or "Due Date" near the amount due. Look for format MM/DD/YYYY or "Mon DD, YYYY". Extract as YYYY-MM-DD.
-7. SERVICE ADDRESS: Extract the complete service address including street, city, state, and ZIP code if visible.
-8. SERVICE TYPE: SCE bills are typically "electric" only (not combined with water like LADWP).
+   IMPORTANT: The rate schedule is a SHORT code (usually 5-15 characters), NOT a long description.
+8. SERVICE ADDRESS: Extract the complete service address including street, city, state, and ZIP code if visible.
+9. SERVICE TYPE: SCE bills are typically "electric" only (not combined with water like LADWP).
 9. IDENTITY CHECK: Before finalizing, verify the utility_name matches what's actually shown on the bill. If the bill header says "Southern California Edison" or "SCE", utility_name MUST be "Southern California Edison" or "SCE", NOT "LADWP".
 
 Use null for any field you cannot confidently extract. Amounts should be numbers (no $ signs or commas).""" + training_hints_text
@@ -624,6 +636,8 @@ def regex_extract_all_fields(raw_text):
         "success": False,
         "utility_name": None,
         "account_number": None,
+        "customer_account": None,  # Store both for UI
+        "service_account": None,   # Preferred
         "service_address": None,
         "rate_schedule": None,
         "billing_period_start": None,
@@ -638,7 +652,12 @@ def regex_extract_all_fields(raw_text):
     }
     
     if not raw_text:
+        print("[regex_extract] ERROR: Empty raw_text provided!")
         return result
+    
+    # Debug: Show sample of text being processed
+    text_preview = raw_text[:500].replace('\n', '\\n')
+    print(f"[regex_extract] Processing {len(raw_text)} chars. Preview: {text_preview}...")
     
     text_lower = raw_text.lower()
     
@@ -804,40 +823,109 @@ def regex_extract_all_fields(raw_text):
             break
     
     # ========== ACCOUNT NUMBER ==========
-    # Universal patterns covering various utility formats
+    # Priority: Service account > Customer account (user preference)
+    # SCE bills have BOTH - prefer Service account (e.g., "8001053647")
+    # 
+    # SCE FORMAT OBSERVED:
+    #   Customer account
+    #   700203608397
+    #   
+    #   Service account
+    #   8001053647
+    #   1151 OLYMPIC DR
+    #   CORONA, CA 92881
+    #
+    # Need patterns that handle:
+    # 1. Multi-line format (label on one line, number on next)
+    # 2. Same-line format (label: number)
+    # 3. Various separators (newlines, colons, spaces)
+    
     account_patterns = [
-        # LADWP: "SA # : 7729100271" or "SA #: 8729100019"
+        # ===== SCE SERVICE ACCOUNT (HIGHEST PRIORITY) =====
+        # SCE multi-line: "Service account" then number on next line(s)
+        # Allow some garbage between label and number (like blank lines)
+        r"Service\s*account\s*[\n\r]+\s*(\d{10})\b",
+        r"Service\s*account\s*[\n\r\s]+(\d{10})\b",
+        r"Service\s*account[:\s]*(\d{10})\b",
+        # Service acct with potential "POD-ID" between
+        r"Service\s*account\s*(?:POD[\-]?ID[^\n]*[\n\r]+)?\s*(\d{10})\b",
+        # Any "Service" + "account" + 10-digit number within 100 chars
+        r"Service\s+account[\s\S]{0,50}?(\d{10})\b",
+        
+        # ===== LADWP SA # =====
         r"SA\s*#\s*[:\s]*(\d{10})",
-        # SCE: "Service Account: 3-XXX-XXXX-XX" format
-        r"Service\s*Account[:\s]*(\d[\-\d]{8,20})",
-        # Standard labeled account
-        r"Account\s*(?:Number|#|No\.?)[:\s]*([A-Z0-9\-]{6,20})",
-        # Customer account
-        r"Customer\s*(?:Account|#|No\.?)[:\s]*([A-Z0-9\-]{6,20})",
+        
+        # ===== SCE CUSTOMER ACCOUNT (FALLBACK) =====
+        r"Customer\s*account\s*[\n\r]+\s*(\d{12})\b",
+        r"Customer\s*account\s*[\n\r\s]+(\d{12})\b",
+        r"Customer\s*account[:\s]*(\d{12})\b",
+        r"Customer\s+account[\s\S]{0,50}?(\d{12})\b",
+        
+        # ===== GENERIC ACCOUNT PATTERNS =====
+        # Standard labeled: "Account Number: 123456789"
+        r"Account\s*(?:Number|#|No\.?)[:\s]+(\d{6,15})",
         # Just "Account:" followed by number
-        r"Account[:\s]+([A-Z0-9][\-A-Z0-9]{5,20})",
-        # XXX-XXX-XXX format (common)
+        r"Account[:\s]+(\d{6,15})",
+        # XXX-XXX-XXXX format
         r"Account[:\s]+(\d{3,4}[\-\s]\d{3,4}[\-\s]\d{3,4})",
         # Acct abbreviation
-        r"Acct\.?\s*#?[:\s]*([A-Z0-9\-]{6,20})",
+        r"Acct\.?\s*#?[:\s]+(\d{6,15})",
         # Bill account
-        r"Bill(?:ing)?\s*Account[:\s]*([A-Z0-9\-]{6,20})",
+        r"Bill(?:ing)?\s*Account[:\s]+(\d{6,15})",
         # Service ID
-        r"Service\s*ID[:\s]*([A-Z0-9\-]{6,20})",
+        r"Service\s*ID[:\s]+(\d{6,15})",
         # Electric account
-        r"Electric\s*Account[:\s]*([A-Z0-9\-]{6,20})",
-        # Just a long number after "Your account" text
-        r"Your\s*Account[:\s]*([A-Z0-9\-]{6,20})",
+        r"Electric\s*Account[:\s]+(\d{6,15})",
     ]
-    for pattern in account_patterns:
-        match = re.search(pattern, raw_text, re.IGNORECASE)
+    
+    # First try to extract SERVICE account (preferred for SCE)
+    service_acct_patterns = [
+        r"Service\s*account\s*[\n\r]+\s*(\d{10})\b",
+        r"Service\s*account\s*[\n\r\s]+(\d{10})\b",
+        r"Service\s*account[:\s]*(\d{10})\b",
+        r"Service\s+account[\s\S]{0,50}?(\d{10})\b",
+        r"SA\s*#\s*[:\s]*(\d{10})",
+    ]
+    for pattern in service_acct_patterns:
+        match = re.search(pattern, raw_text, re.IGNORECASE | re.MULTILINE)
         if match:
             acct = match.group(1).strip()
-            # Skip if too short or looks invalid
-            if len(acct) >= 6:
-                result["account_number"] = acct
-                print(f"[regex_extract] account_number: {result['account_number']}")
+            if acct.isdigit() and len(acct) == 10:
+                result["service_account"] = acct
+                result["account_number"] = acct  # Use service account as primary
+                print(f"[regex_extract] service_account: {acct} (pattern: {pattern[:40]}...)")
                 break
+    
+    # Then try to extract CUSTOMER account (fallback/secondary)
+    customer_acct_patterns = [
+        r"Customer\s*account\s*[\n\r]+\s*(\d{12})\b",
+        r"Customer\s*account\s*[\n\r\s]+(\d{12})\b",
+        r"Customer\s*account[:\s]*(\d{12})\b",
+        r"Customer\s+account[\s\S]{0,50}?(\d{12})\b",
+    ]
+    for pattern in customer_acct_patterns:
+        match = re.search(pattern, raw_text, re.IGNORECASE | re.MULTILINE)
+        if match:
+            acct = match.group(1).strip()
+            if acct.isdigit() and len(acct) == 12:
+                result["customer_account"] = acct
+                # Only use customer account as primary if we didn't find service account
+                if not result["account_number"]:
+                    result["account_number"] = acct
+                print(f"[regex_extract] customer_account: {acct} (pattern: {pattern[:40]}...)")
+                break
+    
+    # Generic fallback patterns if neither service nor customer account found
+    if not result["account_number"]:
+        for pattern in account_patterns:
+            match = re.search(pattern, raw_text, re.IGNORECASE | re.MULTILINE)
+            if match:
+                acct = match.group(1).strip()
+                # Validate: must be purely numeric and reasonable length
+                if acct.isdigit() and 6 <= len(acct) <= 15:
+                    result["account_number"] = acct
+                    print(f"[regex_extract] account_number (fallback): {result['account_number']} (pattern: {pattern[:50]}...)")
+                    break
     
     # ========== SERVICE ADDRESS ==========
     # Universal patterns - look for labeled addresses and street patterns
@@ -915,8 +1003,18 @@ def regex_extract_all_fields(raw_text):
                 break
     
     # ========== BILLING PERIOD ==========
-    # Universal patterns covering various date formats
+    # SCE FORMAT OBSERVED:
+    #   Page 3: "For meter V349N-002081 from 07/21/25 to 08/18/25"
+    #   Also: Date bill prepared 08/19/25 (not billing period, but related)
+    #
     period_patterns = [
+        # ===== SCE SPECIFIC (HIGHEST PRIORITY) =====
+        # SCE: "from 07/21/25 to 08/18/25" - exact format from page 3
+        r"from\s+(\d{1,2}/\d{1,2}/\d{2,4})\s+to\s+(\d{1,2}/\d{1,2}/\d{2,4})",
+        # SCE: "For meter XXXX from MM/DD/YY to MM/DD/YY"
+        r"[Ff]or\s+meter\s+[A-Z0-9\-]+\s+from\s+(\d{1,2}/\d{1,2}/\d{2,4})\s+to\s+(\d{1,2}/\d{1,2}/\d{2,4})",
+        
+        # ===== GENERIC LABELED PATTERNS =====
         # Labeled: "Billing Period: MM/DD/YYYY - MM/DD/YYYY"
         r"(?:Billing|Service|Statement|Usage)\s*Period[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})\s*[-–to]+\s*(\d{1,2}/\d{1,2}/\d{2,4})",
         # Labeled with word dates: "Billing Period: Nov 1, 2024 to Dec 1, 2024"
@@ -925,8 +1023,9 @@ def regex_extract_all_fields(raw_text):
         r"From[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})\s*(?:To|[-–])\s*(\d{1,2}/\d{1,2}/\d{2,4})",
         # Service From/To
         r"Service\s*From[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})\s*(?:To|Through)[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})",
-        # Just two dates with dash (common)
+        # Just two dates with dash/to (common)
         r"(\d{1,2}/\d{1,2}/\d{2,4})\s*[-–]\s*(\d{1,2}/\d{1,2}/\d{2,4})\s*(?:\d+\s*days?)?",
+        r"(\d{1,2}/\d{1,2}/\d{2,4})\s+to\s+(\d{1,2}/\d{1,2}/\d{2,4})",
         # SCE: "For usage from Nov 05 to Dec 04, 2024"
         r"(?:For\s*)?[Uu]sage\s*(?:from\s*)?(\w+\s+\d{1,2})\s*(?:to|through|-)\s*(\w+\s+\d{1,2},?\s+\d{4})",
         # Read dates: "Current Read: 12/04/24  Previous Read: 11/05/24"
@@ -935,7 +1034,7 @@ def regex_extract_all_fields(raw_text):
         # Meter read dates
         r"Meter\s*Read\s*Dates?[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})\s*[-–to]+\s*(\d{1,2}/\d{1,2}/\d{2,4})",
         # Days in billing period with dates
-        r"(\d{1,2}/\d{1,2}/\d{2,4})\s*(?:thru|through|to)\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+        r"(\d{1,2}/\d{1,2}/\d{2,4})\s*(?:thru|through)\s*(\d{1,2}/\d{1,2}/\d{2,4})",
     ]
     for pattern in period_patterns:
         match = re.search(pattern, raw_text, re.IGNORECASE)
@@ -952,6 +1051,10 @@ def regex_extract_all_fields(raw_text):
     # ========== DUE DATE ==========
     # Universal patterns for payment due date
     due_patterns = [
+        # SCE: "Due by 10/08/25" - HIGHEST PRIORITY (exact match from bill)
+        r"Due\s*[Bb]y\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+        # SCE: "Total amount you owe by 10/08/25"
+        r"(?:Total\s*)?[Aa]mount\s*(?:you\s*)?[Oo]we\s*[Bb]y\s*(\d{1,2}/\d{1,2}/\d{2,4})",
         # Standard due date labels
         r"Due\s*Date\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{2,4})",
         r"Due\s*Date\s*[:\-]?\s*(\w+\s+\d{1,2},?\s+\d{4})",
@@ -988,11 +1091,29 @@ def regex_extract_all_fields(raw_text):
     # ========== TOTAL KWH ==========
     # Run kWh extraction regardless of initial service_type detection
     # If we find kWh, that confirms it's electric
+    #
+    # SCE FORMAT OBSERVED:
+    #   Page 3: "Total electricity you used this month in kWh    160,474"
+    #   Also on page 3: Table showing On peak/Mid peak/Off peak summing to 160474 kWh
+    #
     kwh_patterns = [
+        # ===== SCE SPECIFIC (HIGHEST PRIORITY) =====
+        # SCE Page 3: "Total electricity you used this month in kWh    160,474"
+        r"Total\s+electricity\s+you\s+used\s+this\s+month\s+in\s+kWh\s+([\d,]+)",
+        # SCE: "Total electricity you used this month in kWh" with number anywhere after
+        r"Total\s+electricity\s+you\s+used[\s\S]{0,30}?([\d,]{4,})",
+        # SCE: usage summary total line - "160474 kWh" standalone on page 3
+        r"^\s*([\d,]{4,})\s*kWh\s*$",
+        # SCE table: "On peak [bar] 25246 kWh"
+        r"(?:On|Off|Mid)\s*peak\s*[\s\S]{0,50}?([\d,]+)\s*kWh",
+        
+        # ===== LADWP SPECIFIC =====
         # LADWP: "Electric Charges 10/24/25 - 11/26/25 81,920 kWh"
         r"Electric\s*Charges\s*\d{1,2}/\d{1,2}/\d{2,4}\s*[-–]\s*\d{1,2}/\d{1,2}/\d{2,4}\s*([\d,]+(?:\.\d+)?)\s*kWh",
         # LADWP: "Total kWh Consumption"
         r"Total\s*kWh\s*Consumption[^\d]*([\d,]+(?:\.\d+)?)",
+        
+        # ===== GENERIC PATTERNS =====
         # Total Usage/kWh/Energy
         r"Total\s*(?:Usage|kWh|Energy)[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
         r"Total\s*(?:Usage|kWh|Energy)[:\s]*([\d,]+(?:\.\d+)?)\s*(?:kilowatt)",
@@ -1006,12 +1127,12 @@ def regex_extract_all_fields(raw_text):
         r"kWh\s*Used[:\s]*([\d,]+(?:\.\d+)?)",
         # Energy Charges ... X kWh
         r"Energy\s*Charges.*?([\d,]+(?:\.\d+)?)\s*kWh",
-        # SCE patterns
+        # Your usage this month
         r"Your\s*[Uu]sage\s*(?:this\s*month)?[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
         r"Billed\s*kWh[:\s]*([\d,]+(?:\.\d+)?)",
         r"Total\s*Billed\s*kWh[:\s]*([\d,]+(?:\.\d+)?)",
         r"kWh\s*Billed[:\s]*([\d,]+(?:\.\d+)?)",
-        # SCE table formats
+        # Table formats
         r"Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
         r"Generation[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
         # Meter Reading shows kWh
@@ -1026,12 +1147,8 @@ def regex_extract_all_fields(raw_text):
         r"Electric\s*Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
         # X kWh near "usage" or "used"
         r"[Uu](?:sage|sed)[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-        # On-Peak/Off-Peak/Mid-Peak with kWh (capture the sum later)
-        r"On[\s\-]*Peak[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-        r"Off[\s\-]*Peak[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-        r"Mid[\s\-]*Peak[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-        # Standalone large number + kWh (careful - last resort)
-        r"\b([\d,]{3,}(?:\.\d+)?)\s*kWh\b",
+        # Standalone large number + kWh (last resort)
+        r"\b([\d,]{4,})\s*kWh\b",
     ]
     for pattern in kwh_patterns:
         match = re.search(pattern, raw_text, re.IGNORECASE)
@@ -1052,31 +1169,43 @@ def regex_extract_all_fields(raw_text):
                 pass
     
     # ========== TOTAL AMOUNT ==========
-    # Universal patterns for total amount due
+    # SCE FORMAT OBSERVED:
+    #   Page 1: "Amount due $37,225.88" (top right, prominent)
+    #   Page 1: "Total amount you owe by 09/08/25   $37,225.88"
+    #
+    # IMPORTANT: Prioritize "Total amount you owe" and "Amount due" over "New charges"
     amount_patterns = [
+        # ===== SCE SPECIFIC (HIGHEST PRIORITY) =====
+        # SCE: "Amount due $37,225.88" - exact format from bill page 1
+        r"Amount\s+due\s+\$\s*([\d,]+\.\d{2})",
+        r"Amount\s+due\s*\$?([\d,]+\.\d{2})",
+        # SCE: "Total amount you owe by 09/08/25 $37,225.88"
+        r"Total\s+amount\s+you\s+owe\s+by\s+\d{1,2}/\d{1,2}/\d{2,4}\s+\$?\s*([\d,]+\.\d{2})",
+        r"Total\s+amount\s+you\s+owe[\s\S]{0,30}?\$\s*([\d,]+\.\d{2})",
+        # SCE: Big prominent "Amount due" with $ amount 
+        r"Amount\s*due[:\s]*\$\s*([\d,]+\.\d{2})",
+        
+        # ===== LADWP =====
         # LADWP: "Total Amount Due $ 22,462.77"
         r"Total\s*Amount\s*Due\s*\$\s*([\d,]+\.\d{2})",
-        # Amount Due (various formats)
+        
+        # ===== GENERIC PATTERNS =====
+        # Total Amount You Owe (case insensitive)
+        r"Total\s*Amount\s*You\s*Owe[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # Total Due/Owed/Charges
+        r"Total\s*(?:Due|Owed)[:\s]*\$?\s*([\d,]+\.\d{2})",
+        r"Total\s*Amount\s*(?:Owed|Payable)[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # Amount Due (various formats) - but NOT "new charges"
         r"(?:Total\s*)?Amount\s*Due[:\s]*\$?\s*([\d,]+\.\d{2})",
         r"Amount\s*(?:Now\s*)?Due[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # Total Due/Owed/Charges
-        r"Total\s*(?:Due|Owed|Charges)[:\s]*\$?\s*([\d,]+\.\d{2})",
-        r"Total\s*Amount\s*(?:Owed|Payable)[:\s]*\$?\s*([\d,]+\.\d{2})",
         # Please Pay / Pay This Amount
         r"(?:Please\s*)?Pay\s*(?:This\s*)?Amount[:\s]*\$?\s*([\d,]+\.\d{2})",
         r"Amount\s*(?:To\s*)?Pay[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # New Charges
-        r"(?:Total\s*)?New\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
         # Balance Due
         r"(?:Total\s*)?Balance\s*Due[:\s]*\$?\s*([\d,]+\.\d{2})",
-        r"Balance\s*Forward[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # Current Charges
-        r"(?:Total\s*)?Current\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
         # Total Electric/Gas Charges
-        r"Total\s*Electric\s*Charges\s*\$?\s*([\d,]+\.\d{2})",
-        r"Total\s*Gas\s*Charges\s*\$?\s*([\d,]+\.\d{2})",
-        # SCE: "Total Amount You Owe"
-        r"Total\s*Amount\s*You\s*Owe[:\s]*\$?\s*([\d,]+\.\d{2})",
+        r"Total\s*Electric\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
+        r"Total\s*Gas\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
         # Your Bill / This Bill
         r"(?:Your|This)\s*Bill[:\s]*\$?\s*([\d,]+\.\d{2})",
         # Pay Online amount
@@ -1085,8 +1214,11 @@ def regex_extract_all_fields(raw_text):
         r"Total\s*Bill[:\s]*\$?\s*([\d,]+\.\d{2})",
         # Statement Balance
         r"Statement\s*Balance[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # Amount Enclosed
-        r"Amount\s*Enclosed[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # Current Charges (lower priority)
+        r"(?:Total\s*)?Current\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # New Charges (LOWEST PRIORITY - not the total owed!)
+        r"Your\s+new\s+charges[:\s]*\$?\s*([\d,]+\.\d{2})",
+        r"(?:Total\s*)?New\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
         # Generic $ amount after "total" or "due"
         r"(?:total|due)[:\s]*\$\s*([\d,]+\.\d{2})",
     ]
@@ -1105,39 +1237,60 @@ def regex_extract_all_fields(raw_text):
                 pass
     
     # ========== METER NUMBER ==========
-    # Universal patterns for meter identification
+    # SCE FORMAT OBSERVED:
+    #   "For meter V349N-002081 from 07/21/25 to 08/18/25"
+    #   Pattern: V + 3 digits + letter + hyphen + 6 digits
+    #
+    # LADWP FORMAT:
+    #   "APMYV00222-00027735"
+    #   Pattern: APM + alphanumeric + hyphen + digits
+    #
+    # Also seen: E-1234567, 12345678, etc.
+    
     meter_patterns = [
-        # LADWP electric: Look for meter ID pattern like "APMYV00222-00027735" 
+        # ===== SCE METER FORMAT (HIGHEST PRIORITY) =====
+        # SCE: "For meter V349N-002081" - letter + digits + letter + hyphen + digits
+        r"[Ff]or\s*meter\s+([A-Z]\d{3}[A-Z][\-]\d{6})",
+        # SCE: "meter V349N-002081" anywhere
+        r"\bmeter\s+([A-Z]\d{3}[A-Z][\-]\d{6})",
+        # SCE standalone meter ID: V###X-###### format
+        r"\b([A-Z]\d{3}[A-Z][\-]\d{6})\b",
+        # SCE: E-####### or similar with E prefix
+        r"\b(E[\-]\d{7,10})\b",
+        
+        # ===== LADWP METER FORMAT =====
         r"(APM[A-Z0-9]{2,5}[\-][0-9\-]{8,15})",
-        # Generic meter with hyphens after METER NUMBER label
-        r"METER\s*(?:NUMBER|#|NO\.?|ID)[\s:]*[\s\S]{0,20}?([\dA-Z]{2,5}[\-][A-Z0-9\-]{6,20})",
-        # Water meter: simple numeric like "96117765"
-        r"METER\s*(?:NUMBER|#|NO\.?|ID)[:\s]+(\d{6,15})",
-        # Generic: "Meter #: 12345678" or "Meter No: 12345678"  
-        r"Meter\s*(?:#|No\.?|Number|ID)[:\s]+([A-Z0-9\-]{5,20})",
-        # Service Point ID
-        r"Service\s*Point\s*(?:ID|#)?[:\s]*([A-Z0-9\-]{6,20})",
+        
+        # ===== GENERIC LABELED PATTERNS =====
+        # "METER NUMBER: V349N-002081" or "Meter #: 12345678"
+        r"METER\s*(?:NUMBER|#|NO\.?|ID)[\s:]+([A-Z0-9][\-A-Z0-9]{4,20})",
+        r"Meter\s*(?:#|No\.?|Number|ID)[:\s]+([A-Z0-9][\-A-Z0-9]{4,20})",
         # Electric Meter
-        r"Electric\s*Meter[:\s]*([A-Z0-9\-]{5,20})",
-        # Meter Serial
-        r"Meter\s*Serial[:\s]*([A-Z0-9\-]{5,20})",
-        # SCE service account as meter (sometimes)
-        r"Service\s*Acct[:\s]*(\d[\-\d]{8,15})",
-        # Just "Meter" followed by alphanumeric
-        r"\bMeter[:\s]+([A-Z0-9]{6,15})\b",
+        r"Electric\s*Meter[:\s]+([A-Z0-9][\-A-Z0-9]{4,20})",
+        # Meter Serial Number
+        r"Meter\s*Serial[:\s]+([A-Z0-9][\-A-Z0-9]{4,20})",
+        # Service Point ID
+        r"Service\s*Point\s*(?:ID|#)?[:\s]+([A-Z0-9][\-A-Z0-9]{4,20})",
+        
+        # ===== NUMERIC ONLY (LOWER PRIORITY) =====
+        # "Meter: 12345678" - pure numeric
+        r"\bMeter[:\s]+(\d{6,15})\b",
+        # METER NUMBER followed by numeric
+        r"METER\s*(?:NUMBER|#|NO\.?|ID)[:\s]+(\d{6,15})",
     ]
+    
     for pattern in meter_patterns:
         match = re.search(pattern, raw_text, re.IGNORECASE)
         if match:
             meter_val = match.group(1).strip()
-            # Skip common non-meter values
-            skip_values = ["SERVES", "NUMBER", "READING", "READ", "TYPE", "LOCATION", "STATUS"]
+            # Skip common false positives
+            skip_values = ["SERVES", "NUMBER", "READING", "READ", "TYPE", "LOCATION", "STATUS", "UNKNOWN"]
             if meter_val.upper() in skip_values:
                 continue
-            # Must have at least some digits or specific format
-            if len(meter_val) >= 5 and (re.search(r'\d', meter_val) or '-' in meter_val):
+            # Must have reasonable length and contain digits
+            if len(meter_val) >= 5 and re.search(r'\d', meter_val):
                 result["meter_number"] = meter_val
-                print(f"[regex_extract] meter_number: {result['meter_number']}")
+                print(f"[regex_extract] meter_number: {result['meter_number']} (pattern: {pattern[:40]}...)")
                 break
     
     # ========== TOU BREAKDOWN ==========
@@ -1156,11 +1309,45 @@ def regex_extract_all_fields(raw_text):
             "kwh": kwh, "rate": rate, "estimated_cost": cost
         })
     
-    # SCE bills: TOU periods are NOT labeled! They're in the Usage Summary table like:
+    # SCE bills: TOU periods may have explicit labels like:
+    # "On peak 32249 kwh x $0.12384 = $3,993.72"
+    # "Mid peak 67241 kwh x $0.12272 = $8,251.82"  
+    # "Off peak 52319 kwh x $0.08918 = $4,665.81"
+    # "Super off peak 45000 kwh x $0.05918 = $2,665.81"
+    # OCR may produce artifacts like "kwh =x" or "kwh_ x" so we need flexible matching
+    # First try to extract WITH explicit labels
+    if not tou_data:
+        # Pattern with explicit period label - flexible to handle OCR artifacts
+        # Matches: "Off peak 65375 kwh =x $0.12227 = $7,993.41" (OCR typo =x)
+        # Matches: "Super off peak 51345 kwh_ x $0.08875 = $4,556.87" (OCR underscore)
+        # Matches: "Super off peak 21571 kWh x = $0.08875 = $1,914.42" (extra = after x)
+        # Matches: "On peak 28006 kWh x $0.14823 2 $4,151.33" (2 instead of =)
+        sce_labeled_pattern = r"(On[\s\-]*Peak|Mid[\s\-]*Peak|Super\s*Off[\s\-]*Peak|Off[\s\-]*Peak)\s+([\d,]+)\s*kWh[_\s]*[=]?\s*x\s*[=]?\s*\$?([\d.]+)\s*[=2]\s*\$?([\d,]+\.\d{2})"
+        for match in re.finditer(sce_labeled_pattern, raw_text, re.IGNORECASE):
+            period_raw = match.group(1).strip()
+            kwh = float(match.group(2).replace(",", ""))
+            rate = float(match.group(3))
+            cost = float(match.group(4).replace(",", ""))
+            # Skip small entries
+            if kwh < 100:
+                continue
+            # Normalize period name
+            period_lower = period_raw.lower().replace("-", " ").replace("  ", " ")
+            if "super" in period_lower:
+                period = "Super Off-Peak"
+            elif "on" in period_lower:
+                period = "On-Peak"
+            elif "mid" in period_lower:
+                period = "Mid-Peak"
+            elif "off" in period_lower:
+                period = "Off-Peak"
+            else:
+                period = period_raw.title()
+            tou_data.append({"period": period, "kwh": kwh, "rate": rate, "estimated_cost": cost})
+            print(f"[regex_extract] SCE TOU explicit: {period} - {kwh} kWh @ ${rate} = ${cost}")
+    
+    # If no labeled data found, try inferring from rate (fallback)
     # "13401 kWh   x   $0.14823   =   $1,986.43"
-    # "5636 kWh    x   $0.13829   =   $779.41"
-    # "78701 kWh   x   $0.10952   =   $8,619.33"
-    # We extract all rows and infer periods from rate (highest = On-Peak, middle = Mid-Peak, lowest = Off-Peak)
     if not tou_data:
         # Pattern: "13401 kWh x $0.14823 = $1,986.43" or "13,401 kWh x $0.14823 = $1,986.43"
         sce_usage_pattern = r"([\d,]+)\s*kWh\s+x\s+\$?([\d.]+)\s*=\s*\$?([\d,]+\.\d{2})"
@@ -1279,6 +1466,8 @@ def transform_to_ui_payload(result):
         "total_cost": result.get("total_amount"),  # alias
         "tou_breakdown": result.get("tou_breakdown", []),
         "meter_number": result.get("meter_number"),
+        "service_account": result.get("service_account"),
+        "customer_account": result.get("customer_account"),
     }
     
     # Build the transformed payload

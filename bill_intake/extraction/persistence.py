@@ -87,11 +87,12 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
             return None
 
         utility_name = normalize_utility_name(get_val("utility_name"))
-        account_number = get_val("customer_account", "account_number")
-
-        if not utility_name or not account_number:
-            print("[bill_extractor] Cannot save to normalized tables: missing utility_name or account_number")
-            return False
+        # Prioritize account_number (what frontend sets) over customer_account
+        account_number = get_val("account_number", "customer_account", "service_account")
+        # Normalization will convert None/N/A to "Unknown" - don't fail the save!
+        if not account_number:
+            account_number = "Unknown"
+            print(f"[bill_extractor] Using default account 'Unknown' for file")
 
         account_id = upsert_utility_account(project_id, utility_name, account_number)
 
@@ -265,21 +266,41 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
         taxes = clean_numeric(get_val("taxes_total", "taxes", "total_taxes"))
         other_charges = clean_numeric(get_val("other_charges_total", "other_charges"))
 
-        tou_on_kwh = clean_numeric(get_val("kwh_on_peak", "on_peak_kwh", "tou_on_kwh", "tou_high_peak_kwh"))
-        tou_mid_kwh = clean_numeric(get_val("kwh_mid_peak", "mid_peak_kwh", "tou_mid_kwh"))
-        tou_off_kwh = clean_numeric(get_val("kwh_off_peak", "off_peak_kwh", "tou_off_kwh", "tou_low_peak_kwh"))
+        # Parse tou_breakdown array into flat values if present
+        tou_breakdown = get_val("tou_breakdown") or []
+        tou_parsed = {"on": {}, "mid": {}, "off": {}, "super_off": {}}
+        for entry in tou_breakdown:
+            if not isinstance(entry, dict):
+                continue
+            period = str(entry.get("period", "")).lower().replace("-", " ").replace("_", " ")
+            kwh = entry.get("kwh")
+            rate = entry.get("rate")
+            cost = entry.get("estimated_cost") or entry.get("cost")
+            if "super" in period:
+                tou_parsed["super_off"] = {"kwh": kwh, "rate": rate, "cost": cost}
+            elif "on" in period:
+                tou_parsed["on"] = {"kwh": kwh, "rate": rate, "cost": cost}
+            elif "mid" in period:
+                tou_parsed["mid"] = {"kwh": kwh, "rate": rate, "cost": cost}
+            elif "off" in period:
+                tou_parsed["off"] = {"kwh": kwh, "rate": rate, "cost": cost}
 
-        tou_on_rate = parse_dollar_rate(get_val("rate_on_peak_per_kwh", "on_peak_rate", "tou_on_rate_dollars", "tou_high_peak_rate"))
-        tou_mid_rate = parse_dollar_rate(get_val("rate_mid_peak_per_kwh", "mid_peak_rate", "tou_mid_rate_dollars"))
-        tou_off_rate = parse_dollar_rate(get_val("rate_off_peak_per_kwh", "off_peak_rate", "tou_off_rate_dollars", "tou_low_peak_rate"))
+        # Get TOU values from tou_breakdown first, then fall back to flat keys
+        tou_on_kwh = clean_numeric(tou_parsed["on"].get("kwh")) or clean_numeric(get_val("kwh_on_peak", "on_peak_kwh", "tou_on_kwh", "tou_high_peak_kwh"))
+        tou_mid_kwh = clean_numeric(tou_parsed["mid"].get("kwh")) or clean_numeric(get_val("kwh_mid_peak", "mid_peak_kwh", "tou_mid_kwh"))
+        tou_off_kwh = clean_numeric(tou_parsed["off"].get("kwh")) or clean_numeric(get_val("kwh_off_peak", "off_peak_kwh", "tou_off_kwh", "tou_low_peak_kwh"))
 
-        tou_super_off_kwh = clean_numeric(get_val("kwh_super_off_peak", "super_off_peak_kwh", "tou_super_off_kwh", "tou_base_kwh"))
-        tou_super_off_rate = parse_dollar_rate(get_val("rate_super_off_peak_per_kwh", "super_off_peak_rate", "tou_super_off_rate_dollars", "tou_base_rate"))
+        tou_on_rate = parse_dollar_rate(tou_parsed["on"].get("rate")) or parse_dollar_rate(get_val("rate_on_peak_per_kwh", "on_peak_rate", "tou_on_rate_dollars", "tou_high_peak_rate"))
+        tou_mid_rate = parse_dollar_rate(tou_parsed["mid"].get("rate")) or parse_dollar_rate(get_val("rate_mid_peak_per_kwh", "mid_peak_rate", "tou_mid_rate_dollars"))
+        tou_off_rate = parse_dollar_rate(tou_parsed["off"].get("rate")) or parse_dollar_rate(get_val("rate_off_peak_per_kwh", "off_peak_rate", "tou_off_rate_dollars", "tou_low_peak_rate"))
 
-        tou_on_cost = clean_numeric(get_val("tou_high_peak_cost", "tou_on_cost"))
-        tou_mid_cost = clean_numeric(get_val("tou_mid_cost"))
-        tou_off_cost = clean_numeric(get_val("tou_low_peak_cost", "tou_off_cost"))
-        tou_super_off_cost = clean_numeric(get_val("tou_base_cost", "tou_super_off_cost"))
+        tou_super_off_kwh = clean_numeric(tou_parsed["super_off"].get("kwh")) or clean_numeric(get_val("kwh_super_off_peak", "super_off_peak_kwh", "tou_super_off_kwh", "tou_base_kwh"))
+        tou_super_off_rate = parse_dollar_rate(tou_parsed["super_off"].get("rate")) or parse_dollar_rate(get_val("rate_super_off_peak_per_kwh", "super_off_peak_rate", "tou_super_off_rate_dollars", "tou_base_rate"))
+
+        tou_on_cost = clean_numeric(tou_parsed["on"].get("cost")) or clean_numeric(get_val("tou_high_peak_cost", "tou_on_cost"))
+        tou_mid_cost = clean_numeric(tou_parsed["mid"].get("cost")) or clean_numeric(get_val("tou_mid_cost"))
+        tou_off_cost = clean_numeric(tou_parsed["off"].get("cost")) or clean_numeric(get_val("tou_low_peak_cost", "tou_off_cost"))
+        tou_super_off_cost = clean_numeric(tou_parsed["super_off"].get("cost")) or clean_numeric(get_val("tou_base_cost", "tou_super_off_cost"))
 
         if tou_on_cost is None and tou_on_kwh is not None and tou_on_rate is not None:
             tou_on_cost = round(tou_on_kwh * tou_on_rate, 2)
