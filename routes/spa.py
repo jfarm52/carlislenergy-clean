@@ -1,13 +1,15 @@
 from __future__ import annotations
+import os
 
-from flask import Blueprint, jsonify, send_file, send_from_directory
+from flask import Blueprint, jsonify, send_file, send_from_directory, current_app
 
 spa_bp = Blueprint("spa", __name__)
 
 
 @spa_bp.route("/")
 def index():
-    response = send_file("index.html")
+    index_path = os.path.join(current_app.root_path, "index.html")
+    response = send_file(index_path)
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
@@ -36,7 +38,8 @@ def catch_all(path: str):
     if path.startswith("api/") or path.startswith("static/"):
         return jsonify({"error": "Not found"}), 404
 
-    response = send_file("index.html")
+    index_path = os.path.join(current_app.root_path, "index.html")
+    response = send_file(index_path)
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
