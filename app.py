@@ -307,6 +307,15 @@ except Exception as e:
 try:
     from routes.bills_api import bills_bp
     app.register_blueprint(bills_bp)
+    
+    # Auto-cleanup duplicate accounts on startup
+    try:
+        from bill_intake.db.maintenance import merge_duplicate_accounts
+        result = merge_duplicate_accounts(project_id=None)
+        if result['merged'] > 0:
+            print(f"[BOOT] Merged {result['merged']} duplicate accounts on startup")
+    except Exception as merge_err:
+        print(f"[BOOT] Warning: Could not run duplicate account cleanup: {merge_err}")
 except Exception as e:
     print(f"[BOOT] Warning: could not register bills blueprint: {e}")
 

@@ -454,4 +454,32 @@ def register(*, bills_bp, is_enabled, extraction_progress, populate_normalized_t
             print(f"[bills] Error exporting bills CSV: {e}")
             return jsonify({"success": False, "error": str(e)}), 500
 
+    @bills_bp.route("/api/projects/<project_id>/bills/merge-duplicate-accounts", methods=["POST"])
+    def merge_duplicate_accounts_endpoint(project_id):
+        """Merge duplicate accounts that have the same normalized utility name and account number."""
+        if not is_enabled():
+            return jsonify({"error": "Bills feature is disabled"}), 403
+
+        try:
+            from bill_intake.db.maintenance import merge_duplicate_accounts
+            result = merge_duplicate_accounts(project_id)
+            return jsonify({"success": True, **result})
+        except Exception as e:
+            print(f"[bills] Error merging duplicate accounts: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
+
+    @bills_bp.route("/api/maintenance/merge-all-duplicate-accounts", methods=["POST"])
+    def merge_all_duplicate_accounts_endpoint():
+        """Merge ALL duplicate accounts across all projects."""
+        if not is_enabled():
+            return jsonify({"error": "Bills feature is disabled"}), 403
+
+        try:
+            from bill_intake.db.maintenance import merge_duplicate_accounts
+            result = merge_duplicate_accounts(project_id=None)
+            return jsonify({"success": True, **result})
+        except Exception as e:
+            print(f"[bills] Error merging duplicate accounts: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
+
 

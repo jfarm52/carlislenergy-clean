@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from psycopg2.extras import RealDictCursor
+
 from bill_intake.db.connection import get_connection
+from bill_intake.utils.normalization import normalize_account_number, normalize_utility_name
 
 
 def delete_account_if_empty(account_id):
