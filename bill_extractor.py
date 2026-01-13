@@ -1299,7 +1299,21 @@ def transform_to_ui_payload(result):
 
 
 def extract_bill_data_text_based(file_id, job_queue, file_path, project_id):
-    """Text-based bill extraction using normalization pipeline."""
+    """
+    Text-based bill extraction using smart fallback pipeline.
+    
+    Strategy (optimized for speed and cost):
+    1. Extract NATIVE text only (no OCR) - fast, free
+    2. Run regex extraction on native text
+    3. If regex gets all critical fields → DONE (skip OCR and AI entirely!)
+    4. If missing fields → try OCR (slower but still cheaper than AI)
+    5. Run regex on OCR text
+    6. If regex succeeds → DONE
+    7. If still missing fields → call AI as last resort
+    
+    This approach handles scanned PDFs with clear printed text efficiently,
+    ignoring handwritten annotations that don't contain critical data.
+    """
     from bills import NormalizationService, TextCleaner, CacheService
     from bills.parser import TwoPassParser
     from bills.job_queue import JobState
@@ -1308,51 +1322,123 @@ def extract_bill_data_text_based(file_id, job_queue, file_path, project_id):
     import time
     
     start_time = time.time()
-    print(f"[bill_extractor] Starting text-based extraction for file {file_id}")
+    print(f"[bill_extractor] Starting SMART text-based extraction for file {file_id}")
 
     try:
-        job_queue.update_state(file_id, JobState.EXTRACTING_TEXT, "Extracting text from file")
         normalizer = NormalizationService()
-        norm_result = normalizer.normalize(file_path)
-
-        if not norm_result.success:
-            print(f"[bill_extractor] Normalization failed: {norm_result.error}")
-            err = norm_result.error or "Normalization failed"
-            payload = {
-                "success": False,
-                "error_code": "NORMALIZATION_FAILED",
-                "error_reason": err,
-                "error": err,  # back-compat
-            }
-            update_bill_file_extraction_payload(file_id, payload)
-            update_bill_file_status(file_id, "failed", processed=True)
-            update_file_processing_status(file_id, "failed", {"error": norm_result.error})
-            return payload
-
-        print(f"[bill_extractor] Extracted {len(norm_result.text)} chars via {norm_result.metadata.get('method')}")
-
-        job_queue.update_state(file_id, JobState.CLEANING, "Cleaning and filtering text")
         cleaner = TextCleaner()
-        clean_result = cleaner.clean(norm_result.text)
-        print(f"[bill_extractor] Cleaned text: {clean_result.stats}")
-
-        # ========== STEP 1: REGEX EXTRACTION FIRST (free, fast) ==========
-        job_queue.update_state(file_id, JobState.CLEANING, "Extracting with patterns")
-        regex_result = regex_extract_all_fields(clean_result.cleaned_text)
         
-        # ========== STEP 2: NON-ELECTRIC EARLY EXIT ==========
-        if regex_result.get("service_type") in ("water", "gas"):
+        # ========== STEP 1: TRY NATIVE TEXT FIRST (NO OCR) ==========
+        job_queue.update_state(file_id, JobState.EXTRACTING_TEXT, "Extracting native text (fast)")
+        native_result = normalizer.normalize_native_only(file_path)
+        
+        if not native_result.success:
+            print(f"[bill_extractor] Native text extraction failed: {native_result.error}")
+            # Fall through to full normalization (which may OCR)
+            native_text = ""
+        else:
+            native_text = native_result.text
+            print(f"[bill_extractor] Native text: {len(native_text)} chars via {native_result.metadata.get('method')}")
+        
+        # ========== STEP 2: RUN REGEX ON NATIVE TEXT ==========
+        regex_result = None
+        if native_text and len(native_text.strip()) > 50:
+            job_queue.update_state(file_id, JobState.CLEANING, "Analyzing native text with patterns")
+            clean_native = cleaner.clean(native_text)
+            regex_result = regex_extract_all_fields(clean_native.cleaned_text)
+            
+            # Check if regex got all critical fields from native text
+            if regex_result.get("success"):
+                duration_ms = (time.time() - start_time) * 1000
+                print(f"[bill_extractor] ✅ NATIVE TEXT SUCCESS - all critical fields extracted!")
+                print(f"[bill_extractor] Skipping OCR and AI - extraction complete in {duration_ms:.0f}ms")
+                
+                save_bill_to_normalized_tables(file_id, project_id, regex_result)
+                
+                metrics = build_metrics(
+                    method=native_result.metadata.get("method", "native"),
+                    duration_ms=duration_ms,
+                    tokens_in=0,  # No AI!
+                    tokens_out=0,
+                    pages=native_result.metadata.get("pages", 1),
+                    char_count=len(clean_native.cleaned_text),
+                    cache_hit=False,
+                    pass_used="native_regex_only",
+                )
+                
+                update_bill_file_extraction_payload(file_id, transform_to_ui_payload(regex_result))
+                missing_fields = compute_missing_fields(regex_result)
+                update_bill_file_status(file_id, "complete", processed=True, missing_fields=missing_fields)
+                update_file_processing_status(file_id, "complete", metrics)
+                return regex_result
+            else:
+                # Log what's missing so we know why we're falling back
+                has_utility = bool(regex_result.get("utility_name"))
+                has_account = bool(regex_result.get("account_number"))
+                has_amount = bool(regex_result.get("total_amount"))
+                has_dates = bool(regex_result.get("billing_period_start") and regex_result.get("billing_period_end"))
+                has_kwh = bool(regex_result.get("total_kwh"))
+                print(f"[bill_extractor] Native regex incomplete: utility={has_utility}, account={has_account}, "
+                      f"amount={has_amount}, dates={has_dates}, kwh={has_kwh}")
+        
+        # ========== STEP 3: TRY OCR IF NATIVE TEXT INSUFFICIENT ==========
+        # Only OCR if native text didn't give us what we need
+        norm_result = native_result  # Start with native result
+        clean_result = cleaner.clean(native_text) if native_text else None
+        
+        needs_ocr = (
+            not regex_result or 
+            not regex_result.get("success") or 
+            native_result.metadata.get("method") in ("pdf_native_sparse", "image_no_native")
+        )
+        
+        if needs_ocr:
+            print(f"[bill_extractor] Native text insufficient - trying OCR...")
+            job_queue.update_state(file_id, JobState.EXTRACTING_TEXT, "Running OCR (slower)")
+            
+            # Full normalization (includes OCR for scanned PDFs)
+            norm_result = normalizer.normalize(file_path)
+            
+            if not norm_result.success:
+                print(f"[bill_extractor] Normalization failed: {norm_result.error}")
+                err = norm_result.error or "Normalization failed"
+                payload = {
+                    "success": False,
+                    "error_code": "NORMALIZATION_FAILED",
+                    "error_reason": err,
+                    "error": err,
+                }
+                update_bill_file_extraction_payload(file_id, payload)
+                update_bill_file_status(file_id, "failed", processed=True)
+                update_file_processing_status(file_id, "failed", {"error": norm_result.error})
+                return payload
+            
+            print(f"[bill_extractor] OCR extracted {len(norm_result.text)} chars via {norm_result.metadata.get('method')}")
+            
+            job_queue.update_state(file_id, JobState.CLEANING, "Cleaning OCR text")
+            clean_result = cleaner.clean(norm_result.text)
+            print(f"[bill_extractor] Cleaned text: {clean_result.stats}")
+            
+            # ========== STEP 4: RUN REGEX ON OCR TEXT ==========
+            job_queue.update_state(file_id, JobState.CLEANING, "Extracting with patterns (OCR text)")
+            regex_result = regex_extract_all_fields(clean_result.cleaned_text)
+        
+        # If we don't have clean_result yet (shouldn't happen, but safety)
+        if not clean_result:
+            clean_result = cleaner.clean(norm_result.text if norm_result else "")
+        
+        # ========== STEP 5: NON-ELECTRIC EARLY EXIT ==========
+        if regex_result and regex_result.get("service_type") in ("water", "gas"):
             print(f"[bill_extractor] NON-ELECTRIC bill detected ({regex_result['service_type']}) - skipping AI")
             duration_ms = (time.time() - start_time) * 1000
             
-            # Build minimal result for non-electric bills
-            regex_result["success"] = True  # Mark success to save to DB
+            regex_result["success"] = True
             save_bill_to_normalized_tables(file_id, project_id, regex_result)
             
             metrics = build_metrics(
                 method=norm_result.metadata.get("method", "unknown"),
                 duration_ms=duration_ms,
-                tokens_in=0,  # No AI tokens used!
+                tokens_in=0,
                 tokens_out=0,
                 pages=norm_result.metadata.get("pages", 1),
                 char_count=len(clean_result.cleaned_text),
@@ -1366,9 +1452,9 @@ def extract_bill_data_text_based(file_id, job_queue, file_path, project_id):
             print(f"[bill_extractor] Non-electric bill processed in {duration_ms:.0f}ms (NO AI CALL)")
             return regex_result
         
-        # ========== STEP 3: CHECK IF REGEX GOT ALL CRITICAL FIELDS ==========
-        if regex_result.get("success"):
-            print(f"[bill_extractor] REGEX extracted all critical fields - skipping AI!")
+        # ========== STEP 6: CHECK IF OCR REGEX GOT ALL CRITICAL FIELDS ==========
+        if regex_result and regex_result.get("success"):
+            print(f"[bill_extractor] ✅ OCR REGEX SUCCESS - all critical fields extracted!")
             duration_ms = (time.time() - start_time) * 1000
             
             save_bill_to_normalized_tables(file_id, project_id, regex_result)
@@ -1376,22 +1462,22 @@ def extract_bill_data_text_based(file_id, job_queue, file_path, project_id):
             metrics = build_metrics(
                 method=norm_result.metadata.get("method", "unknown"),
                 duration_ms=duration_ms,
-                tokens_in=0,  # No AI tokens used!
+                tokens_in=0,
                 tokens_out=0,
                 pages=norm_result.metadata.get("pages", 1),
                 char_count=len(clean_result.cleaned_text),
                 cache_hit=False,
-                pass_used="regex_only",
+                pass_used="ocr_regex_only",
             )
             
             update_bill_file_extraction_payload(file_id, transform_to_ui_payload(regex_result))
             missing_fields = compute_missing_fields(regex_result)
             update_bill_file_status(file_id, "complete", processed=True, missing_fields=missing_fields)
             update_file_processing_status(file_id, "complete", metrics)
-            print(f"[bill_extractor] Extraction complete via REGEX in {duration_ms:.0f}ms (NO AI CALL)")
+            print(f"[bill_extractor] Extraction complete via OCR+REGEX in {duration_ms:.0f}ms (NO AI CALL)")
             return regex_result
         
-        # ========== STEP 4: CHECK CACHE (for AI results) ==========
+        # ========== STEP 7: CHECK CACHE (for AI results) ==========
         cache = CacheService()
         text_hash, cached = cache.check_and_get(clean_result.cleaned_text)
 
@@ -1400,7 +1486,7 @@ def extract_bill_data_text_based(file_id, job_queue, file_path, project_id):
             print(f"[bill_extractor] Cache hit for hash {text_hash[:12]}")
             result = cached["parse_result"]
             # Merge with regex result (regex fills any gaps)
-            merged = {**regex_result, **result}
+            merged = {**regex_result, **result} if regex_result else result
             merged["_raw_text"] = clean_result.cleaned_text
             save_bill_to_normalized_tables(file_id, project_id, merged)
 
@@ -1410,8 +1496,8 @@ def extract_bill_data_text_based(file_id, job_queue, file_path, project_id):
             update_file_processing_status(file_id, "complete", cached.get("metrics", {}))
             return merged
 
-        # ========== STEP 5: CALL AI (only if regex missed critical fields) ==========
-        print(f"[bill_extractor] Regex incomplete - calling AI for missing fields")
+        # ========== STEP 8: CALL AI (only if native + OCR regex both failed) ==========
+        print(f"[bill_extractor] ⚠️ Native + OCR regex both incomplete - calling AI as last resort")
         job_queue.update_state(file_id, JobState.PARSING_PASS_A, "Parsing with AI (Pass A)")
         parser = TwoPassParser()
         parse_result = parser.parse(clean_result.cleaned_text, clean_result.evidence_lines)
@@ -1436,7 +1522,7 @@ def extract_bill_data_text_based(file_id, job_queue, file_path, project_id):
         if parse_result.success:
             cache.save_result(file_id, text_hash, clean_result.cleaned_text, parse_result.data, metrics)
             # Merge AI result with regex result (AI takes priority, regex fills gaps)
-            merged = {**regex_result, **parse_result.data}
+            merged = {**(regex_result or {}), **parse_result.data}
             merged["_raw_text"] = clean_result.cleaned_text
             save_bill_to_normalized_tables(file_id, project_id, merged)
 
