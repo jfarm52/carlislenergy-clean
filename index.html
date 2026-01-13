@@ -10966,6 +10966,9 @@
                             <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.85rem; color: #666; cursor: pointer;">
                                 <input type="checkbox" id="embeddedBillSelectAll" style="cursor: pointer;"> Select All
                             </label>
+                            <button id="embeddedBillCancelSelected" class="button" style="font-size: 0.8rem; padding: 0.3rem 0.6rem; display: none; background-color: #f0ad4e; color: white;">
+                                Cancel Selected
+                            </button>
                             <button id="embeddedBillDeleteSelected" class="button danger" style="font-size: 0.8rem; padding: 0.3rem 0.6rem; display: none;">
                                 Delete Selected
                             </button>
@@ -11028,6 +11031,7 @@
                                     </div>
                                 </div>
                                 <button class="embedded-file-view-btn" data-file-id="${file.id}" title="View">View</button>
+                                <button class="embedded-file-cancel-btn" data-file-id="${file.id}" data-status="${statusClass}" title="Cancel Processing" style="background-color: #f0ad4e; color: white; display: ${statusClass === 'processing' || statusClass === 'waiting' ? 'inline-block' : 'none'};">Cancel</button>
                                 <button class="embedded-file-delete-btn" data-file-id="${file.id}" data-has-extracted="${hasExtractedData}" title="Delete">Delete</button>
                             </div>
                         `;
@@ -11121,6 +11125,56 @@
                                 } catch (err) {
                                     console.error('[embeddedBills] Error deleting file:', err);
                                     showToast('Error deleting file', 'error');
+                                }
+                            }
+                        });
+                    });
+                    
+                    // Wire up Cancel button clicks (individual files)
+                    container.querySelectorAll('.embedded-file-cancel-btn').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            const fileId = btn.dataset.fileId;
+                            const fileName = btn.closest('.embedded-bill-file-row').querySelector('span').textContent.trim();
+                            const currentProjectId = ProjectState.currentProjectId || ProjectState.project_id;
+                            
+                            const confirmed = await showConfirmModal({
+                                title: 'Cancel Processing',
+                                message: `Cancel processing for:\n\n${fileName}`,
+                                confirmText: 'Cancel Processing',
+                                cancelText: 'Keep Processing',
+                                danger: false
+                            });
+                            if (confirmed) {
+                                try {
+                                    const response = await fetch(`/api/projects/${encodeURIComponent(currentProjectId)}/bills/files/${fileId}/cancel`, { method: 'POST' });
+                                    const result = await response.json();
+                                    
+                                    if (result.success) {
+                                        showToast('Processing cancelled', 'success');
+                                        // Update row status immediately
+                                        const row = btn.closest('.embedded-bill-file-row');
+                                        if (row) {
+                                            row.dataset.status = 'error';
+                                            const progressFill = row.querySelector('.progress-fill');
+                                            const progressText = row.querySelector('.progress-text');
+                                            if (progressFill) {
+                                                progressFill.classList.remove('processing', 'waiting');
+                                                progressFill.classList.add('error');
+                                            }
+                                            if (progressText) {
+                                                progressText.classList.remove('processing', 'waiting');
+                                                progressText.classList.add('error');
+                                                progressText.textContent = '✗ Cancelled';
+                                            }
+                                            btn.style.display = 'none';
+                                        }
+                                    } else {
+                                        showToast(result.error || 'Failed to cancel', 'error');
+                                    }
+                                } catch (err) {
+                                    console.error('[embeddedBills] Error cancelling file:', err);
+                                    showToast('Error cancelling file', 'error');
                                 }
                             }
                         });
@@ -12021,16 +12075,36 @@
             // Multi-select functionality
             const selectAllCheckbox = document.getElementById('embeddedBillSelectAll');
             let deleteSelectedBtn = document.getElementById('embeddedBillDeleteSelected');
+            let cancelSelectedBtn = document.getElementById('embeddedBillCancelSelected');
 
-            function updateDeleteButtonVisibility() {
+            function updateButtonVisibility() {
                 const checkedCount = document.querySelectorAll('.embedded-bill-checkbox:checked').length;
-                // Always get fresh reference in case button was replaced
-                const btn = document.getElementById('embeddedBillDeleteSelected');
-                if (btn) {
-                    btn.style.display = checkedCount > 0 ? 'inline-block' : 'none';
-                    btn.textContent = checkedCount > 1 ? `Delete ${checkedCount} Selected` : 'Delete Selected';
+                
+                // Delete button
+                const deleteBtn = document.getElementById('embeddedBillDeleteSelected');
+                if (deleteBtn) {
+                    deleteBtn.style.display = checkedCount > 0 ? 'inline-block' : 'none';
+                    deleteBtn.textContent = checkedCount > 1 ? `Delete ${checkedCount} Selected` : 'Delete Selected';
+                }
+                
+                // Cancel button - only show if any checked files are processing/waiting
+                const cancelBtn = document.getElementById('embeddedBillCancelSelected');
+                if (cancelBtn) {
+                    const checkedProcessing = document.querySelectorAll('.embedded-bill-checkbox:checked').length > 0 ?
+                        Array.from(document.querySelectorAll('.embedded-bill-checkbox:checked'))
+                            .filter(cb => {
+                                const row = cb.closest('.embedded-bill-file-row');
+                                const status = row?.dataset.status;
+                                return status === 'processing' || status === 'waiting';
+                            }).length : 0;
+                    
+                    cancelBtn.style.display = checkedProcessing > 0 ? 'inline-block' : 'none';
+                    cancelBtn.textContent = checkedProcessing > 1 ? `Cancel ${checkedProcessing} Selected` : 'Cancel Selected';
                 }
             }
+            
+            // Alias for backwards compatibility
+            const updateDeleteButtonVisibility = updateButtonVisibility;
 
             // Delete Selected button - clone to remove old listeners FIRST
             if (deleteSelectedBtn) {
@@ -12098,7 +12172,7 @@
                     }
 
                     if (deleted > 0) {
-                        updateDeleteButtonVisibility();
+                        updateButtonVisibility();
                         // Reset select-all checkbox
                         const selectAllCb = document.getElementById('embeddedBillSelectAll');
                         if (selectAllCb) selectAllCb.checked = false;
@@ -12111,6 +12185,86 @@
                             renderEmbeddedBillsSection();
                         }
                     }
+                });
+            }
+
+            // Cancel Selected button
+            if (cancelSelectedBtn) {
+                const newCancelBtn = cancelSelectedBtn.cloneNode(true);
+                cancelSelectedBtn.parentNode.replaceChild(newCancelBtn, cancelSelectedBtn);
+                cancelSelectedBtn = newCancelBtn;
+
+                newCancelBtn.addEventListener('click', async function() {
+                    const checkedBoxes = document.querySelectorAll('.embedded-bill-checkbox:checked');
+                    const processingFileIds = Array.from(checkedBoxes)
+                        .filter(cb => {
+                            const row = cb.closest('.embedded-bill-file-row');
+                            const status = row?.dataset.status;
+                            return status === 'processing' || status === 'waiting';
+                        })
+                        .map(cb => cb.dataset.fileId);
+
+                    if (processingFileIds.length === 0) return;
+
+                    const confirmMsg = processingFileIds.length === 1
+                        ? 'Cancel processing for this bill?'
+                        : `Cancel processing for ${processingFileIds.length} bills?`;
+
+                    const confirmed = await showConfirmModal({
+                        title: 'Cancel Processing',
+                        message: confirmMsg,
+                        confirmText: 'Cancel Processing',
+                        cancelText: 'Keep Processing',
+                        danger: false
+                    });
+                    if (!confirmed) return;
+
+                    let cancelled = 0;
+                    let failed = 0;
+                    for (const fileId of processingFileIds) {
+                        try {
+                            const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/files/${fileId}/cancel`, { method: 'POST' });
+                            const result = await resp.json();
+                            if (result.success) {
+                                cancelled++;
+                                // Update row status immediately
+                                const row = document.querySelector(`.embedded-bill-file-row[data-file-id="${fileId}"]`);
+                                if (row) {
+                                    row.dataset.status = 'error';
+                                    const progressFill = row.querySelector('.progress-fill');
+                                    const progressText = row.querySelector('.progress-text');
+                                    const cancelBtn = row.querySelector('.embedded-file-cancel-btn');
+                                    if (progressFill) {
+                                        progressFill.classList.remove('processing', 'waiting');
+                                        progressFill.classList.add('error');
+                                    }
+                                    if (progressText) {
+                                        progressText.classList.remove('processing', 'waiting');
+                                        progressText.classList.add('error');
+                                        progressText.textContent = '✗ Cancelled';
+                                    }
+                                    if (cancelBtn) cancelBtn.style.display = 'none';
+                                }
+                            } else {
+                                failed++;
+                            }
+                        } catch (err) {
+                            failed++;
+                            console.error('[embeddedBills] Cancel error:', err);
+                        }
+                    }
+
+                    if (cancelled > 0 && failed === 0) {
+                        showToast(`${cancelled} file${cancelled === 1 ? '' : 's'} cancelled`, 'success');
+                    } else if (cancelled > 0 && failed > 0) {
+                        showToast(`${cancelled} cancelled, ${failed} failed`, 'warning');
+                    } else if (failed > 0) {
+                        showToast(`Failed to cancel ${failed} file${failed === 1 ? '' : 's'}`, 'error');
+                    }
+
+                    updateButtonVisibility();
+                    const selectAllCb = document.getElementById('embeddedBillSelectAll');
+                    if (selectAllCb) selectAllCb.checked = false;
                 });
             }
 

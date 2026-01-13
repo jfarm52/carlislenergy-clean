@@ -430,6 +430,30 @@ def register(*, bills_bp, is_enabled, populate_normalized_tables):
             print(f"[bills] Error getting bills for file {file_id}: {e}")
             return jsonify({"success": False, "error": str(e)}), 500
 
+    @bills_bp.route("/api/projects/<project_id>/bills/files/<int:file_id>/cancel", methods=["POST"])
+    def cancel_bill_processing(project_id, file_id):
+        """Cancel processing for a bill file that is stuck or taking too long."""
+        if not is_enabled():
+            return jsonify({"error": "Bills feature is disabled"}), 403
+
+        try:
+            from bill_intake.db.bill_files import update_file_processing_status, update_bill_file_extraction_payload
+            
+            # Mark as cancelled with error payload
+            update_file_processing_status(file_id, "cancelled", {"reason": "User cancelled"})
+            update_bill_file_extraction_payload(file_id, {
+                "success": False,
+                "error_code": "USER_CANCELLED",
+                "error_reason": "Processing was cancelled by user",
+                "error": "Cancelled"
+            })
+            
+            print(f"[bills] User cancelled processing for file {file_id}")
+            return jsonify({"success": True, "message": "Processing cancelled"})
+        except Exception as e:
+            print(f"[bills] Error cancelling file {file_id}: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
+
     @bills_bp.route("/api/projects/<project_id>/bills/files/<int:file_id>", methods=["DELETE"])
     def delete_bill_file_route(project_id, file_id):
         """Delete a bill file and all related extracted data."""
