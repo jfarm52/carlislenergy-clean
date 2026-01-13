@@ -2939,7 +2939,7 @@
         /* ========== EMBEDDED BILL FILE ROW - 3-COLUMN GRID LAYOUT ========== */
         .embedded-bill-file-row {
             display: grid;
-            grid-template-columns: 1fr auto auto;
+            grid-template-columns: 1fr auto auto auto;
             gap: 0.75rem;
             padding: 0.75rem;
             background: #f8f9fa;
@@ -3031,6 +3031,7 @@
         .embedded-bill-file-row .progress-text.needs-review { color: #ffc107; }
         .embedded-bill-file-row .progress-text.error { color: #dc3545; }
         .embedded-bill-file-row .embedded-file-view-btn,
+        .embedded-bill-file-row .embedded-file-cancel-btn,
         .embedded-bill-file-row .embedded-file-delete-btn {
             padding: 0.35rem 0.6rem;
             font-size: 0.75rem;
@@ -3042,6 +3043,10 @@
         }
         .embedded-bill-file-row .embedded-file-view-btn {
             background: #1976d2;
+            color: white;
+        }
+        .embedded-bill-file-row .embedded-file-cancel-btn {
+            background: #6c757d;
             color: white;
         }
         .embedded-bill-file-row .embedded-file-delete-btn {
@@ -10966,7 +10971,7 @@
                             <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.85rem; color: #666; cursor: pointer;">
                                 <input type="checkbox" id="embeddedBillSelectAll" style="cursor: pointer;"> Select All
                             </label>
-                            <button id="embeddedBillCancelSelected" class="button" style="font-size: 0.8rem; padding: 0.3rem 0.6rem; display: none; background-color: rgba(120, 120, 130, 0.85); color: white; backdrop-filter: blur(4px);">
+                            <button id="embeddedBillCancelSelected" class="button" style="font-size: 0.8rem; padding: 0.3rem 0.6rem; display: none; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
                                 Cancel Selected
                             </button>
                             <button id="embeddedBillDeleteSelected" class="button danger" style="font-size: 0.8rem; padding: 0.3rem 0.6rem; display: none;">
@@ -11031,7 +11036,7 @@
                                     </div>
                                 </div>
                                 <button class="embedded-file-view-btn" data-file-id="${file.id}" title="View">View</button>
-                                <button class="embedded-file-cancel-btn" data-file-id="${file.id}" data-status="${statusClass}" title="Cancel Processing" style="background-color: rgba(120, 120, 130, 0.85); color: white; backdrop-filter: blur(4px); display: ${statusClass === 'processing' || statusClass === 'waiting' ? 'inline-block' : 'none'};">Cancel</button>
+                                <button class="embedded-file-cancel-btn" data-file-id="${file.id}" data-status="${statusClass}" title="Cancel Processing" style="display: ${statusClass === 'processing' || statusClass === 'waiting' ? 'inline-block' : 'none'};">Cancel</button>
                                 <button class="embedded-file-delete-btn" data-file-id="${file.id}" data-has-extracted="${hasExtractedData}" title="Delete">Delete</button>
                             </div>
                         `;
@@ -12080,26 +12085,18 @@
             function updateButtonVisibility() {
                 const checkedCount = document.querySelectorAll('.embedded-bill-checkbox:checked').length;
                 
+                // Cancel button - show whenever files are selected
+                const cancelBtn = document.getElementById('embeddedBillCancelSelected');
+                if (cancelBtn) {
+                    cancelBtn.style.display = checkedCount > 0 ? 'inline-block' : 'none';
+                    cancelBtn.textContent = checkedCount > 1 ? `Cancel ${checkedCount} Selected` : 'Cancel Selected';
+                }
+                
                 // Delete button
                 const deleteBtn = document.getElementById('embeddedBillDeleteSelected');
                 if (deleteBtn) {
                     deleteBtn.style.display = checkedCount > 0 ? 'inline-block' : 'none';
                     deleteBtn.textContent = checkedCount > 1 ? `Delete ${checkedCount} Selected` : 'Delete Selected';
-                }
-                
-                // Cancel button - only show if any checked files are processing/waiting
-                const cancelBtn = document.getElementById('embeddedBillCancelSelected');
-                if (cancelBtn) {
-                    const checkedProcessing = document.querySelectorAll('.embedded-bill-checkbox:checked').length > 0 ?
-                        Array.from(document.querySelectorAll('.embedded-bill-checkbox:checked'))
-                            .filter(cb => {
-                                const row = cb.closest('.embedded-bill-file-row');
-                                const status = row?.dataset.status;
-                                return status === 'processing' || status === 'waiting';
-                            }).length : 0;
-                    
-                    cancelBtn.style.display = checkedProcessing > 0 ? 'inline-block' : 'none';
-                    cancelBtn.textContent = checkedProcessing > 1 ? `Cancel ${checkedProcessing} Selected` : 'Cancel Selected';
                 }
             }
             
@@ -12196,32 +12193,26 @@
 
                 newCancelBtn.addEventListener('click', async function() {
                     const checkedBoxes = document.querySelectorAll('.embedded-bill-checkbox:checked');
-                    const processingFileIds = Array.from(checkedBoxes)
-                        .filter(cb => {
-                            const row = cb.closest('.embedded-bill-file-row');
-                            const status = row?.dataset.status;
-                            return status === 'processing' || status === 'waiting';
-                        })
-                        .map(cb => cb.dataset.fileId);
+                    const fileIds = Array.from(checkedBoxes).map(cb => cb.dataset.fileId);
 
-                    if (processingFileIds.length === 0) return;
+                    if (fileIds.length === 0) return;
 
-                    const confirmMsg = processingFileIds.length === 1
-                        ? 'Cancel processing for this bill?'
-                        : `Cancel processing for ${processingFileIds.length} bills?`;
+                    const confirmMsg = fileIds.length === 1
+                        ? 'Cancel/reset this bill?'
+                        : `Cancel/reset ${fileIds.length} bills?`;
 
                     const confirmed = await showConfirmModal({
-                        title: 'Cancel Processing',
+                        title: 'Cancel Bills',
                         message: confirmMsg,
-                        confirmText: 'Cancel Processing',
-                        cancelText: 'Keep Processing',
+                        confirmText: 'Cancel',
+                        cancelText: 'Keep',
                         danger: false
                     });
                     if (!confirmed) return;
 
                     let cancelled = 0;
                     let failed = 0;
-                    for (const fileId of processingFileIds) {
+                    for (const fileId of fileIds) {
                         try {
                             const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/files/${fileId}/cancel`, { method: 'POST' });
                             const result = await resp.json();
