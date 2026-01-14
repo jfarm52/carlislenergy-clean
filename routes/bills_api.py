@@ -54,6 +54,10 @@ extraction_progress = {}
 _bill_executor_lock = threading.Lock()
 _bill_executor: ThreadPoolExecutor | None = None
 
+# One-time DB connectivity check (avoids repeated checks on every upload)
+_bills_db_connectivity_verified = False
+_bills_db_check_lock = threading.Lock()
+
 
 def cleanup_old_progress_entries(max_age_s: int = 60 * 20) -> int:
     """
@@ -329,6 +333,7 @@ def get_project_bills(project_id):
 @bills_bp.route('/api/projects/<project_id>/bills/upload', methods=['POST'])
 def upload_bill_file(project_id):
     """Upload a bill PDF file for a project. Does NOT trigger extraction - use /process endpoint."""
+    global _bills_db_connectivity_verified
     import hashlib
     from werkzeug.utils import secure_filename
     from bill_intake.db.connection import get_connection
@@ -336,23 +341,25 @@ def upload_bill_file(project_id):
     if not BILLS_FEATURE_ENABLED:
         return jsonify({'error': 'Bills feature is disabled'}), 403
 
-    # Ensure the bills DB is configured/initialized; otherwise return a clear, actionable error.
-    # Without DATABASE_URL, downstream DB calls will raise and the UI will look like uploads "reset".
-    try:
-        # Validate DB connectivity early so the frontend gets a clean error instead of a silent reset.
-        conn = get_connection()
-        conn.close()
-
-        if not ensure_bills_db_initialized():
-            return jsonify({
-                'success': False,
-                'error': 'Bills database could not be initialized. Check DATABASE_URL and database connectivity.'
-            }), 503
-    except Exception:
-        return jsonify({
-            'success': False,
-            'error': 'Bills database is not configured/reachable. Set DATABASE_URL (PostgreSQL) and ensure the database is running.'
-        }), 503
+    # One-time DB connectivity check (not on every upload - that was slow!)
+    # Uses double-checked locking for thread safety.
+    if not _bills_db_connectivity_verified:
+        with _bills_db_check_lock:
+            if not _bills_db_connectivity_verified:  # Re-check after acquiring lock
+                try:
+                    conn = get_connection()
+                    conn.close()
+                    if not ensure_bills_db_initialized():
+                        return jsonify({
+                            'success': False,
+                            'error': 'Bills database could not be initialized. Check DATABASE_URL and database connectivity.'
+                        }), 503
+                    _bills_db_connectivity_verified = True
+                except Exception:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Bills database is not configured/reachable. Set DATABASE_URL (PostgreSQL) and ensure the database is running.'
+                    }), 503
     
     if 'file' not in request.files:
         return jsonify({'success': False, 'error': 'No file uploaded'}), 400
@@ -485,11 +492,27 @@ def _run_bill_extraction(project_id, file_id, file_path, original_filename):
         update_bill_file_extraction_payload(file_id, extraction_result)
         
         if extraction_result.get('success'):
-            # CRITICAL: Populate normalized tables - this also sets the final review_status
-            # based on actual extracted data (including regex fallbacks)
+            # Populate normalized tables (legacy meter_reads table)
             populate_normalized_tables(project_id, extraction_result, original_filename, file_id=file_id)
             
-            # Get the actual status that was set by persistence.py
+            # CRITICAL: Also save to new bills table AND set review_status
+            # (This was missing - vision path never called save_bill_to_normalized_tables!)
+            try:
+                from bill_extractor import save_bill_to_normalized_tables
+                save_bill_to_normalized_tables(file_id, project_id, extraction_result)
+            except Exception as save_err:
+                print(f"[bills] Warning: save_bill_to_normalized_tables failed: {save_err}")
+                # Fallback: set status based on extracted data presence
+                has_critical = bool(
+                    extraction_result.get('utility_name') and 
+                    extraction_result.get('account_number') and
+                    extraction_result.get('meters')
+                )
+                fallback_status = 'ok' if has_critical else 'needs_review'
+                update_bill_file_review_status(file_id, fallback_status)
+                update_bill_file_status(file_id, 'complete', processed=True)
+            
+            # Get the actual status that was set
             file_record = get_bill_file_by_id(file_id)
             review_status = file_record.get('review_status', 'ok') if file_record else 'ok'
             
