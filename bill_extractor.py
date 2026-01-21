@@ -1254,23 +1254,44 @@ def regex_extract_all_fields(raw_text):
     
     # IMPORTANT: Add late payment charge if present (for accurate total)
     # SCE format: "Late payment charge $150.22" or "Late payment charge $247.29"
+    # OCR can mangle this, so we use multiple patterns
     if result.get("total_amount"):
         late_fee_patterns = [
+            # Standard patterns
             r"Late\s+payment\s+charge\s+\$?([\d,]+\.\d{2})",
+            r"Late\s+payment\s+charge[:\s]+\$?([\d,]+\.\d{2})",
             r"Late\s+fee\s+\$?([\d,]+\.\d{2})",
             r"Late\s+charge\s+\$?([\d,]+\.\d{2})",
+            # OCR variations (spaces in words, missing letters)
+            r"[Ll]ate\s*pay\w*\s*charge\s*\$?([\d,]+\.\d{2})",
+            r"[Ll]ate\s+pa[vy]ment\s+charge\s*\$?([\d,]+\.\d{2})",
+            # Multi-line: look for "Late payment" then amount on next part
+            r"[Ll]ate\s+payment[^$\d]{0,20}\$?([\d,]+\.\d{2})",
+            # Amount followed by "late" keyword  
+            r"\$?([\d,]+\.\d{2})\s+[Ll]ate\s+(?:payment|fee|charge)",
+            # Generic "penalty" or "past due" charges
+            r"[Pp]ast\s+due\s+(?:charge|fee|penalty)\s*\$?([\d,]+\.\d{2})",
+            r"[Pp]enalty\s+(?:charge|fee)\s*\$?([\d,]+\.\d{2})",
         ]
+        late_fee_found = False
         for pattern in late_fee_patterns:
             match = re.search(pattern, raw_text, re.IGNORECASE)
             if match:
                 try:
                     late_fee = float(match.group(1).replace(",", ""))
-                    if late_fee > 0 and late_fee < 1000:  # Reasonable late fee range
+                    if late_fee > 0 and late_fee < 2000:  # Reasonable late fee range (up to $2k)
                         result["total_amount"] += late_fee
                         print(f"[regex_extract] Added late payment charge ${late_fee} -> total_amount: {result['total_amount']}")
+                        late_fee_found = True
                         break
                 except (ValueError, TypeError):
                     pass
+        
+        if not late_fee_found:
+            # Debug: Show nearby text where late fees might be
+            late_context = re.search(r".{0,30}[Ll]ate.{0,50}", raw_text)
+            if late_context:
+                print(f"[regex_extract] DEBUG: Found 'late' in text but no fee captured: '{late_context.group(0)[:60]}...'")
     
     # ========== METER NUMBER ==========
     # SCE FORMAT OBSERVED:
@@ -1427,11 +1448,21 @@ def regex_extract_all_fields(raw_text):
             result["service_type"] = "electric"
             print(f"[regex_extract] Found TOU data - upgrading service_type to 'electric'")
         print(f"[regex_extract] tou_breakdown: {len(tou_data)} periods")
+        for entry in tou_data:
+            print(f"[regex_extract]   - {entry.get('period', 'Unknown')}: {entry.get('kwh', 0)} kWh @ ${entry.get('rate', 0)} = ${entry.get('estimated_cost', 0)}")
         
         # SMART FIX: If total_kwh wasn't found or looks like a TOU period value,
         # calculate it by summing the TOU periods (this is more reliable than pattern matching)
         tou_kwh_sum = sum(entry.get("kwh", 0) for entry in tou_data if entry.get("kwh"))
+        tou_cost_sum = sum(entry.get("estimated_cost", 0) for entry in tou_data if entry.get("estimated_cost"))
         current_total_kwh = result.get("total_kwh")
+        
+        # VALIDATION: Check if TOU cost sum is close to total_amount (sanity check)
+        # If they differ by more than 20%, the extraction might have OCR errors
+        if result.get("total_amount") and tou_cost_sum > 0:
+            cost_diff_pct = abs(result["total_amount"] - tou_cost_sum) / result["total_amount"] * 100
+            if cost_diff_pct > 30:
+                print(f"[regex_extract] WARNING: TOU cost sum ${tou_cost_sum:.2f} differs from total ${result['total_amount']:.2f} by {cost_diff_pct:.1f}% - possible OCR error")
         
         # Check if current total_kwh looks wrong:
         # - Missing
