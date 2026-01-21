@@ -785,7 +785,7 @@ def get_meter_months(account_id, meter_id):
                     }
                 )
 
-            return {"accountId": account_id, "meterId": meter_id, "months": months, "data": monthly_data}
+            return {"accountId": account_id, "meterId": meter_id, "months": len(monthly_data), "data": monthly_data}
     finally:
         conn.close()
 

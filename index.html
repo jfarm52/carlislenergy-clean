@@ -22,12 +22,8 @@
             padding: 0;
             background-color: #f2f2f2;
             color: #333;
-            max-width: 100vw;
+            max-width: 100%;
             overflow-x: hidden;
-            box-sizing: border-box;
-        }
-        *, *::before, *::after {
-            box-sizing: inherit;
         }
         header {
             background: linear-gradient(135deg, #1e5a99 0%, #2d7bb8 50%, #5ca3d6 100%);
@@ -46,9 +42,6 @@
         }
         .container {
             padding: 1rem;
-            max-width: 1600px;
-            margin: 0 auto;
-            box-sizing: border-box;
         }
         h2 {
             margin-top: 1.5rem;
@@ -160,7 +153,6 @@
             flex-wrap: wrap;
             gap: 1rem;
             margin-top: 1rem;
-            justify-content: center;
         }
         .card {
             background-color: #fff;
@@ -169,7 +161,6 @@
             border: 2px solid #555;
             padding: 0.75rem 1rem;
             width: calc(50% - 1rem);
-            max-width: 600px;
             position: relative;
             user-select: none;
             -webkit-user-select: none;
@@ -2174,25 +2165,8 @@
         }
         .bill-summary-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 0.75rem;
-        }
-        @media (max-width: 600px) {
-            .bill-summary-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-            /* Make odd last item span full width */
-            .bill-summary-grid > .bill-summary-item:last-child:nth-child(odd) {
-                grid-column: 1 / -1;
-            }
-        }
-        @media (max-width: 400px) {
-            .bill-summary-grid {
-                grid-template-columns: 1fr;
-            }
-            .bill-summary-grid > .bill-summary-item:last-child:nth-child(odd) {
-                grid-column: auto;
-            }
         }
         .bill-summary-item {
             display: flex;
@@ -2320,6 +2294,9 @@
             color: #333;
         }
         @media (max-width: 600px) {
+            .bill-summary-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
             .bill-usage-summary {
                 grid-template-columns: repeat(2, 1fr);
             }
@@ -2621,206 +2598,6 @@
             }
         }
         
-        /* ========== GLASSMORPHISM FACILITY SUMMARY ========== */
-        .facility-glass-container {
-            position: relative;
-            background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%);
-            border-radius: 16px;
-            padding: 1.5rem;
-            margin-bottom: 1rem;
-            overflow: hidden;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-        }
-        .facility-glass-container::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: radial-gradient(ellipse at 30% 20%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
-                        radial-gradient(ellipse at 70% 80%, rgba(96, 165, 250, 0.1) 0%, transparent 50%);
-            pointer-events: none;
-        }
-        .facility-glass-header {
-            text-align: center;
-            position: relative;
-            z-index: 1;
-        }
-        .facility-glass-utility {
-            font-size: 1.4rem;
-            font-weight: 700;
-            color: #fff;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-            letter-spacing: -0.5px;
-        }
-        .facility-glass-pill {
-            display: inline-block;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 20px;
-            padding: 0.35rem 1rem;
-            font-size: 0.8rem;
-            color: rgba(255, 255, 255, 0.9);
-            margin: 0.75rem 0;
-        }
-        .facility-glass-section-title {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: rgba(255, 255, 255, 0.95);
-            margin: 0.75rem 0;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        .facility-glass-section-title span:first-child {
-            filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.5));
-        }
-        .facility-glass-stats {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 0.75rem;
-            position: relative;
-            z-index: 1;
-        }
-        .facility-glass-stat {
-            background: rgba(255, 255, 255, 0.08);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            border-radius: 12px;
-            padding: 0.75rem 0.5rem;
-            text-align: center;
-            transition: all 0.3s ease;
-        }
-        .facility-glass-stat:hover {
-            background: rgba(255, 255, 255, 0.12);
-            border-color: rgba(255, 255, 255, 0.2);
-            transform: translateY(-2px);
-        }
-        .facility-glass-stat .stat-value {
-            font-size: 1.1rem;
-            font-weight: 700;
-            color: #fff;
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-        }
-        .facility-glass-stat .stat-label {
-            font-size: 0.65rem;
-            color: rgba(255, 255, 255, 0.7);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-top: 0.25rem;
-        }
-        @media (max-width: 500px) {
-            .facility-glass-stats {
-                grid-template-columns: repeat(2, 1fr);
-            }
-            .facility-glass-stat .stat-value {
-                font-size: 1rem;
-            }
-        }
-        
-        /* ========== GLASSMORPHISM TOU SECTION ========== */
-        .facility-glass-tou {
-            margin-top: 1rem;
-            padding-top: 1rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            position: relative;
-            z-index: 1;
-        }
-        .facility-glass-tou-bar {
-            display: flex;
-            gap: 3px;
-            height: 10px;
-            border-radius: 5px;
-            overflow: hidden;
-            margin-bottom: 1rem;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-        }
-        .facility-glass-tou-bar > div {
-            transition: all 0.3s ease;
-        }
-        .facility-glass-tou-bar > div:hover {
-            filter: brightness(1.15);
-        }
-        .facility-glass-tou-cards {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.6rem;
-        }
-        .facility-glass-tou-card {
-            flex: 1;
-            min-width: 110px;
-            border-radius: 12px;
-            padding: 0.75rem 0.5rem;
-            text-align: center;
-            position: relative;
-            overflow: hidden;
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-            transition: all 0.3s ease;
-        }
-        .facility-glass-tou-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(135deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.05) 50%, transparent 100%);
-            pointer-events: none;
-        }
-        .facility-glass-tou-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-            border-color: rgba(255, 255, 255, 0.35);
-        }
-        /* Frosted glass colored backgrounds with slight transparency */
-        .facility-glass-tou-card.tou-on-peak { background: linear-gradient(135deg, rgba(220, 38, 38, 0.9) 0%, rgba(185, 28, 28, 0.95) 100%); }
-        .facility-glass-tou-card.tou-mid-peak { background: linear-gradient(135deg, rgba(245, 158, 11, 0.9) 0%, rgba(217, 119, 6, 0.95) 100%); }
-        .facility-glass-tou-card.tou-off-peak { background: linear-gradient(135deg, rgba(34, 197, 94, 0.9) 0%, rgba(22, 163, 74, 0.95) 100%); }
-        .facility-glass-tou-card.tou-super-off { background: linear-gradient(135deg, rgba(59, 130, 246, 0.9) 0%, rgba(37, 99, 235, 0.95) 100%); }
-        .facility-glass-tou-card .tou-label {
-            font-size: 0.6rem;
-            font-weight: 700;
-            color: rgba(255, 255, 255, 0.95);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 0.35rem;
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-        }
-        .facility-glass-tou-card .tou-kwh {
-            font-size: 0.95rem;
-            font-weight: 700;
-            color: #fff;
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-        }
-        .facility-glass-tou-card .tou-cost {
-            font-size: 0.8rem;
-            color: rgba(255, 255, 255, 0.9);
-            margin-top: 0.15rem;
-        }
-        .facility-glass-tou-card .tou-rate {
-            font-size: 0.7rem;
-            color: rgba(255, 255, 255, 0.8);
-            margin-top: 0.1rem;
-        }
-        @media (max-width: 500px) {
-            .facility-glass-tou-cards {
-                gap: 0.5rem;
-            }
-            .facility-glass-tou-card {
-                min-width: calc(50% - 0.25rem);
-            }
-        }
-        
         /* ========== EMBEDDED METER STATS ROW - MOBILE RESPONSIVE ========== */
         .embedded-meter-stats-row {
             display: grid;
@@ -2838,7 +2615,9 @@
             font-size: 0.95rem;
             font-weight: 700;
             color: #333;
-            white-space: nowrap;
+            white-space: normal;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
             overflow: visible;
         }
         .embedded-meter-stats-row .stat-label {
@@ -2862,7 +2641,6 @@
             }
             .embedded-meter-stats-row .stat-value {
                 font-size: 0.85rem;
-                white-space: nowrap;
             }
             .embedded-meter-stats-row .meter-expand-icon {
                 grid-row: 1 / 3;
@@ -2924,7 +2702,9 @@
         .embedded-bill-row .rate-col {
             text-align: center;
             color: #666;
-            white-space: nowrap;
+            white-space: normal;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
             overflow: visible;
         }
         @media (max-width: 500px) {
@@ -2948,7 +2728,7 @@
         /* ========== EMBEDDED BILL FILE ROW - 3-COLUMN GRID LAYOUT ========== */
         .embedded-bill-file-row {
             display: grid;
-            grid-template-columns: 1fr auto auto auto;
+            grid-template-columns: 1fr auto auto;
             gap: 0.75rem;
             padding: 0.75rem;
             background: #f8f9fa;
@@ -3040,7 +2820,6 @@
         .embedded-bill-file-row .progress-text.needs-review { color: #ffc107; }
         .embedded-bill-file-row .progress-text.error { color: #dc3545; }
         .embedded-bill-file-row .embedded-file-view-btn,
-        .embedded-bill-file-row .embedded-file-cancel-btn,
         .embedded-bill-file-row .embedded-file-delete-btn {
             padding: 0.35rem 0.6rem;
             font-size: 0.75rem;
@@ -3052,10 +2831,6 @@
         }
         .embedded-bill-file-row .embedded-file-view-btn {
             background: #1976d2;
-            color: white;
-        }
-        .embedded-bill-file-row .embedded-file-cancel-btn {
-            background: #6c757d;
             color: white;
         }
         .embedded-bill-file-row .embedded-file-delete-btn {
@@ -4602,7 +4377,7 @@
     </div>
     
     <!-- ==================== CURRENT PROJECT VIEW ==================== -->
-    <div id="currentProjectView" class="app-view current-project-view">
+    <div id="currentProjectView" class="app-view current-project-view active">
         <!-- The header, topInfoBar, siteSection, dataSection are all inside this view -->
 
         <header>
@@ -6476,55 +6251,35 @@
                     ProjectState.siteData.visitDate = siteData.visitDate;
                 }
                 
-                // IMMEDIATELY set view based on URL path (no delay - prevents flash of wrong view)
-                const urlParams = new URLSearchParams(window.location.search);
-                const projectIdParam = urlParams.get('projectId');
-                
-                let path = window.location.pathname.replace(/^\//, '');
-                const hash = window.location.hash.replace('#', '');
-                
-                // Handle encoded hash URLs (e.g., /%23home -> /home)
-                if (path.startsWith('%23') || path.startsWith('#')) {
-                    const cleanPath = path.replace(/^(%23|#)/, '');
-                    window.history.replaceState(null, '', '/' + cleanPath);
-                    path = cleanPath;
-                }
-                
-                // Handle legacy hash URLs by redirecting to path
-                if (hash && !path) {
-                    window.history.replaceState(null, '', '/' + hash);
-                    path = hash;
-                }
-                
-                // Log for debugging
-                console.log('[nav] Initial navigation:', { path, hash, projectIdParam });
-                
-                // If there's a projectId in the URL, load it first before rendering the view
-                if (projectIdParam) {
-                    console.log('[nav] Loading project from URL param:', projectIdParam);
-                    // Load project asynchronously - view will be set after load
-                    loadProjectFromService(projectIdParam).then((loaded) => {
-                        if (loaded) {
-                            // Project loaded - set the view based on path
-                            if (path) {
-                                this.handlePathChange();
-                            } else {
-                                this.setView('currentProject');
-                            }
-                        } else {
-                            // Project load failed - go to home
-                            console.warn('[nav] Failed to load project from URL, redirecting to home');
-                            this.setView('home');
-                        }
-                    });
-                } else {
-                    // No project ID - just set the view based on path
-                    if (path) {
+                // Initial navigation based on URL path (support both path and legacy hash)
+                setTimeout(() => {
+                    // If there's a projectId in the URL, skip navigation here - loadProjectById will handle it
+                    const urlParams = new URLSearchParams(window.location.search);
+                    if (urlParams.get('projectId')) {
+                        console.log('[nav] Deep link detected - deferring navigation to loadProjectById');
+                        return;
+                    }
+                    
+                    let path = window.location.pathname.replace(/^\//, '');
+                    const hash = window.location.hash.replace('#', '');
+                    
+                    // Handle encoded hash URLs (e.g., /%23home -> /home)
+                    if (path.startsWith('%23') || path.startsWith('#')) {
+                        const cleanPath = path.replace(/^(%23|#)/, '');
+                        window.history.replaceState(null, '', '/' + cleanPath);
+                        path = cleanPath;
+                    }
+                    
+                    // Handle legacy hash URLs by redirecting to path
+                    if (hash && !path) {
+                        window.history.replaceState(null, '', '/' + hash);
+                        this.handlePathChange();
+                    } else if (path) {
                         this.handlePathChange();
                     } else {
                         this.setView('home');
                     }
-                }
+                }, 100);
             },
             
             // Setup hamburger drawer
@@ -6566,8 +6321,7 @@
             },
             
             handlePathChange() {
-                const rawPath = window.location.pathname.replace(/^\//, '');
-                const path = rawPath || 'home';
+                const path = window.location.pathname.replace(/^\//, '') || 'home';
                 
                 // Map path to view
                 const pathToView = {
@@ -6580,20 +6334,10 @@
                     'print': 'printView'
                 };
                 
-                const view = pathToView[path];
-                
-                // If unknown path, redirect to home
-                if (!view) {
-                    console.log('[nav] Unknown path:', path, '- redirecting to home');
-                    window.history.replaceState(null, '', '/home');
-                    this.setView('home', false);
-                    return;
+                const view = pathToView[path] || 'home';
+                if (view !== this.currentView) {
+                    this.setView(view, false); // false = don't update URL again
                 }
-                
-                // ALWAYS set view on path change (including initial load)
-                // The old check `view !== this.currentView` would skip setting 'home' on initial load
-                // because currentView is initialized to 'home', causing a blank page
-                this.setView(view, false); // false = don't update URL again
             },
             
             // Set current view
@@ -6623,7 +6367,6 @@
                 this.currentView = viewName;
                 
                 // Update URL path (using pushState for clean URLs)
-                // PRESERVE query parameters (e.g., ?projectId=xxx) when changing paths
                 if (updateHash) {
                     const viewToPath = {
                         'home': '/home',
@@ -6636,9 +6379,7 @@
                     };
                     const newPath = viewToPath[viewName] || '/home';
                     if (window.location.pathname !== newPath) {
-                        // Preserve query string when changing path
-                        const queryString = window.location.search;
-                        window.history.pushState(null, '', newPath + queryString);
+                        window.history.pushState(null, '', newPath);
                     }
                 }
                 
@@ -8075,19 +7816,9 @@
             },
             
             async renderBillsView() {
-                // Wait for config to load before checking billsFeatureEnabled
-                // This prevents incorrect redirects on initial page load
-                if (!this._configLoaded) {
-                    console.log('[bills view] Waiting for config to load...');
-                    // Wait up to 2 seconds for config
-                    for (let i = 0; i < 20 && !this._configLoaded; i++) {
-                        await new Promise(r => setTimeout(r, 100));
-                    }
-                }
-                
                 if (!this.billsFeatureEnabled) {
                     showToast('Utility Bills feature is not enabled.', 'warning');
-                    this.setView('home');
+                    this.setView('currentProject');
                     return;
                 }
                 
@@ -8457,7 +8188,7 @@
                                 html += `
                                     <div class="bills-month-row" data-bill-id="${billId}" onclick="NavigationController.toggleBillDetail(this, ${billId})">
                                         <span class="month-label">${periodLabel}</span>
-                                        <span class="month-value">${formatBillValue(billKwh, 'kwh')}</span>
+                                        <span class="month-value">${formatBillValue(billKwh, 'kwh')} kWh</span>
                                         <span class="month-value">${formatBillValue(billCost, 'cost')}</span>
                                         <span class="month-value">${formatBillValue(billRateVal, 'rate')}/kWh</span>
                                         <span class="expand-icon">▶</span>
@@ -8591,7 +8322,7 @@
                         html += `
                             <div class="bills-tou-item ${colorClass}">
                                 <div class="period-name">${periodName}</div>
-                                <div class="period-kwh">${formatBillValue(kwh, 'kwh')}</div>
+                                <div class="period-kwh">${formatBillValue(kwh, 'kwh')} kWh</div>
                                 <div class="period-rate">${formatBillValue(rateCents, 'rate')}/kWh</div>
                                 ${cost != null ? `<div class="period-cost">${formatBillValue(cost, 'cost')}</div>` : ''}
                             </div>
@@ -8609,7 +8340,7 @@
                         html += `
                             <div class="bills-tou-item tou-highest">
                                 <div class="period-name">On-Peak</div>
-                                <div class="period-kwh">${formatBillValue(tou.onPeakKwh, 'kwh')}</div>
+                                <div class="period-kwh">${formatBillValue(tou.onPeakKwh, 'kwh')} kWh</div>
                                 <div class="period-rate">${formatBillValue(onRateCents, 'rate')}/kWh</div>
                             </div>
                         `;
@@ -8620,7 +8351,7 @@
                         html += `
                             <div class="bills-tou-item tou-mid">
                                 <div class="period-name">Mid-Peak</div>
-                                <div class="period-kwh">${formatBillValue(tou.midPeakKwh, 'kwh')}</div>
+                                <div class="period-kwh">${formatBillValue(tou.midPeakKwh, 'kwh')} kWh</div>
                                 <div class="period-rate">${formatBillValue(midRateCents, 'rate')}/kWh</div>
                             </div>
                         `;
@@ -8631,7 +8362,7 @@
                         html += `
                             <div class="bills-tou-item tou-low">
                                 <div class="period-name">Off-Peak</div>
-                                <div class="period-kwh">${formatBillValue(tou.offPeakKwh, 'kwh')}</div>
+                                <div class="period-kwh">${formatBillValue(tou.offPeakKwh, 'kwh')} kWh</div>
                                 <div class="period-rate">${formatBillValue(offRateCents, 'rate')}/kWh</div>
                             </div>
                         `;
@@ -8642,7 +8373,7 @@
                         html += `
                             <div class="bills-tou-item tou-low">
                                 <div class="period-name">Super Off</div>
-                                <div class="period-kwh">${formatBillValue(tou.superOffPeakKwh, 'kwh')}</div>
+                                <div class="period-kwh">${formatBillValue(tou.superOffPeakKwh, 'kwh')} kWh</div>
                                 <div class="period-rate">${formatBillValue(superOffRateCents, 'rate')}/kWh</div>
                                 <div class="period-cost">${formatBillValue(tou.superOffPeakCost, 'cost')}</div>
                             </div>
@@ -8692,8 +8423,8 @@
                         <div class="account-number" style="font-size: 0.85rem; opacity: 0.85;">Account: ${d.customer_account || bill.account_number || 'N/A'}</div>
                     </div>`;
                     
-                    // Bill Summary Section - pass file_id for View Bill button (not bill.id which is different)
-                    detailedHtml += this.renderBillSummarySection(d, bill.file_id);
+                    // Bill Summary Section
+                    detailedHtml += this.renderBillSummarySection(d);
                     
                     // Usage Summary Section
                     detailedHtml += this.renderUsageSummarySection(d);
@@ -8729,7 +8460,7 @@
                 });
             },
             
-            renderBillSummarySection(d, billId = null) {
+            renderBillSummarySection(d) {
                 const rawPeriodStart = d.billing_period_start;
                 const rawPeriodEnd = d.billing_period_end;
                 const periodStart = rawPeriodStart ? new Date(rawPeriodStart).toLocaleDateString() : '-';
@@ -8737,21 +8468,11 @@
                 const dueDate = d.due_date ? new Date(d.due_date).toLocaleDateString() : '-';
                 const computedDays = computeDaysInPeriod(d.days_in_period, rawPeriodStart, rawPeriodEnd);
                 
-                // View Bill and Edit buttons if we have a billId
-                const actionBtns = billId ? `
-                    <div style="display: flex; gap: 0.5rem;">
-                        <button onclick="window.openBillReviewEdit(${billId}); event.stopPropagation();" style="background: #666; color: white; border: none; border-radius: 4px; padding: 0.35rem 0.75rem; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.25rem;">✏️ Edit</button>
-                        <button onclick="window.viewBillPdf(${billId}); event.stopPropagation();" style="background: #1565c0; color: white; border: none; border-radius: 4px; padding: 0.35rem 0.75rem; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.25rem;">📄 View Bill</button>
-                    </div>` : '';
-                
                 return `
                     <div class="bill-detail-section">
-                        <div class="bill-detail-header" style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="display: flex; align-items: center; gap: 0.5rem;">
-                                <span>📋 Bill Summary</span>
-                                <span class="toggle-icon">▼</span>
-                            </span>
-                            ${actionBtns}
+                        <div class="bill-detail-header">
+                            <span>📋 Bill Summary</span>
+                            <span class="toggle-icon">▼</span>
                         </div>
                         <div class="bill-detail-content">
                             <div class="bill-summary-grid">
@@ -8797,9 +8518,9 @@
                 if (hasToU) {
                     touHtml = `
                         <div class="tou-breakdown">
-                            ${d.kwh_on_peak ? `<div class="tou-item on-peak"><div class="period">On-Peak</div><div class="kwh">${formatBillValue(d.kwh_on_peak, 'kwh')}</div></div>` : ''}
-                            ${d.kwh_mid_peak ? `<div class="tou-item mid-peak"><div class="period">Mid-Peak</div><div class="kwh">${formatBillValue(d.kwh_mid_peak, 'kwh')}</div></div>` : ''}
-                            ${d.kwh_off_peak ? `<div class="tou-item off-peak"><div class="period">Off-Peak</div><div class="kwh">${formatBillValue(d.kwh_off_peak, 'kwh')}</div></div>` : ''}
+                            ${d.kwh_on_peak ? `<div class="tou-item on-peak"><div class="period">On-Peak</div><div class="kwh">${formatBillValue(d.kwh_on_peak, 'kwh')} kWh</div></div>` : ''}
+                            ${d.kwh_mid_peak ? `<div class="tou-item mid-peak"><div class="period">Mid-Peak</div><div class="kwh">${formatBillValue(d.kwh_mid_peak, 'kwh')} kWh</div></div>` : ''}
+                            ${d.kwh_off_peak ? `<div class="tou-item off-peak"><div class="period">Off-Peak</div><div class="kwh">${formatBillValue(d.kwh_off_peak, 'kwh')} kWh</div></div>` : ''}
                         </div>
                     `;
                 }
@@ -9689,7 +9410,7 @@
                 }
             },
             
-            async openBillReview(projectId, fileId, startInEditMode = false) {
+            async openBillReview(projectId, fileId) {
                 try {
                     const response = await fetch(`/api/projects/${projectId}/bills/files/${fileId}/review`);
                     const data = await response.json();
@@ -9710,11 +9431,6 @@
                     
                     const modal = document.getElementById('billReviewModal');
                     if (modal) modal.classList.add('show');
-                    
-                    // If starting in edit mode, toggle it on after modal is shown
-                    if (startInEditMode) {
-                        this.toggleEditMode();
-                    }
                 } catch (e) {
                     console.error('[bills] Review load error:', e);
                     this.showToast('Failed to load bill review', 'error');
@@ -10116,12 +9832,8 @@
                 
                 // Get first account for bill-level fields
                 const firstAccount = accounts[0] || {};
-                const detailedData = payload.detailed_data || {};
                 const utilityName = firstAccount.utility_name || payload.utility_name || '';
-                // Look for account number in multiple places (different extraction formats store it differently)
-                const accountNumber = firstAccount.account_number || payload.account_number || 
-                                      payload.service_account || payload.customer_account ||
-                                      detailedData.service_account || detailedData.customer_account || '';
+                const accountNumber = firstAccount.account_number || payload.account_number || '';
                 
                 // Bill-Level Fields Section
                 html += '<div class="bill-level-fields"><h5>📋 Bill Information</h5><div class="bill-field-row">';
@@ -10130,6 +9842,7 @@
                 const accountMissing = !accountNumber ? 'field-missing' : '';
                 
                 // Get due_date and rate_schedule from payload or detailed_data
+                const detailedData = payload.detailed_data || {};
                 const dueDate = payload.due_date || detailedData.due_date || '';
                 const rateSchedule = payload.rate_schedule || detailedData.rate_schedule || detailedData.rate || '';
                 const dueDateMissing = !dueDate ? 'field-missing' : '';
@@ -10296,7 +10009,7 @@
                 
                 // Add detailed data sections if available (keep visible even in edit mode so users can confirm fixes)
                 if (detailedData && Object.keys(detailedData).length > 0) {
-                    html += this.renderReviewDetailedSections(detailedData, this._isEditMode);
+                    html += this.renderReviewDetailedSections(detailedData);
                 }
                 
                 dataEl.innerHTML = html;
@@ -10333,7 +10046,7 @@
                 if (editBtn) editBtn.textContent = this._isEditMode ? '✖️ Cancel Edit' : '✏️ Edit';
             },
             
-            renderReviewDetailedSections(d, isEditMode = false) {
+            renderReviewDetailedSections(d) {
                 let html = '<div class="bill-review-detailed" style="margin-top: 1.25rem;">';
                 html += '<h5 style="margin-bottom: 0.75rem; color: #1e5a99; border-bottom: 1px solid #e0e0e0; padding-bottom: 0.5rem;">📊 Detailed Extraction Data</h5>';
                 
@@ -10346,15 +10059,6 @@
                 const amountDueVal = d.amount_due ?? d.total_amount_due ?? d.total_cost;
                 const fmt = (v) => formatBillValue(v, 'cost');
                 const computedDays = computeDaysInPeriod(d.days_in_period, periodStartRaw, periodEndRaw);
-                
-                // Editable field helper
-                const editableField = (fieldName, value, type = 'number', step = '0.01') => {
-                    if (isEditMode) {
-                        const inputVal = value != null ? value : '';
-                        return `<input type="${type}" step="${step}" data-field="${fieldName}" value="${inputVal}" style="width: 100%; padding: 0.3rem 0.5rem; border: 1px solid #1976d2; border-radius: 4px; font-size: 0.9rem;">`;
-                    }
-                    return `<span>${type === 'number' ? fmt(value) : value || '-'}</span>`;
-                };
                 
                 html += `
                     <div class="bill-detail-section">
@@ -10377,8 +10081,8 @@
                                     <span>${periodStart} - ${periodEnd} (${computedDays ?? '-'} days)</span>
                                 </div>
                                 <div class="bill-summary-item highlight">
-                                    <label>Amount Due ($)</label>
-                                    ${editableField('amount_due', amountDueVal)}
+                                    <label>Amount Due</label>
+                                    <span>${fmt(amountDueVal)}</span>
                                 </div>
                                 <div class="bill-summary-item">
                                     <label>Due Date</label>
@@ -10405,9 +10109,9 @@
                 let touHtml = '';
                 if (hasToU) {
                     touHtml = `<div class="tou-breakdown">
-                        ${d.kwh_on_peak ? `<div class="tou-item on-peak"><div class="period">On-Peak</div><div class="kwh">${formatBillValue(d.kwh_on_peak, 'kwh')}</div></div>` : ''}
-                        ${d.kwh_mid_peak ? `<div class="tou-item mid-peak"><div class="period">Mid-Peak</div><div class="kwh">${formatBillValue(d.kwh_mid_peak, 'kwh')}</div></div>` : ''}
-                        ${d.kwh_off_peak ? `<div class="tou-item off-peak"><div class="period">Off-Peak</div><div class="kwh">${formatBillValue(d.kwh_off_peak, 'kwh')}</div></div>` : ''}
+                        ${d.kwh_on_peak ? `<div class="tou-item on-peak"><div class="period">On-Peak</div><div class="kwh">${formatBillValue(d.kwh_on_peak, 'kwh')} kWh</div></div>` : ''}
+                        ${d.kwh_mid_peak ? `<div class="tou-item mid-peak"><div class="period">Mid-Peak</div><div class="kwh">${formatBillValue(d.kwh_mid_peak, 'kwh')} kWh</div></div>` : ''}
+                        ${d.kwh_off_peak ? `<div class="tou-item off-peak"><div class="period">Off-Peak</div><div class="kwh">${formatBillValue(d.kwh_off_peak, 'kwh')} kWh</div></div>` : ''}
                     </div>`;
                 }
                 
@@ -10423,11 +10127,6 @@
                     </div>`;
                 }
                 
-                // Editable kWh field
-                const kwhEditField = isEditMode 
-                    ? `<input type="number" step="0.01" data-field="kwh_total" value="${totalKwh != null ? totalKwh : ''}" style="width: 80px; padding: 0.3rem 0.5rem; border: 1px solid #1976d2; border-radius: 4px; font-size: 0.9rem; text-align: center;">`
-                    : `<div class="value">${formatBillValue(totalKwh, 'kwh')}</div>`;
-                
                 html += `
                     <div class="bill-detail-section">
                         <div class="bill-detail-header">
@@ -10437,7 +10136,7 @@
                         <div class="bill-detail-content">
                             <div class="bill-usage-summary">
                                 <div class="usage-stat">
-                                    ${kwhEditField}
+                                    <div class="value">${formatBillValue(totalKwh, 'kwh')}</div>
                                     <div class="label">Total kWh</div>
                                 </div>
                                 <div class="usage-stat">
@@ -10640,28 +10339,6 @@
                         }
                     }
                 });
-                
-                // Capture editable fields from detailed sections (kwh_total, amount_due)
-                const kwhTotalInput = dataEl.querySelector('input[data-field="kwh_total"]');
-                const amountDueInput = dataEl.querySelector('input[data-field="amount_due"]');
-                
-                if (kwhTotalInput) {
-                    const kwhVal = kwhTotalInput.value.trim();
-                    const kwhNum = kwhVal ? parseFloat(kwhVal) : null;
-                    payload.kwh_total = kwhNum;
-                    if (!payload.detailed_data) payload.detailed_data = {};
-                    payload.detailed_data.kwh_total = kwhNum;
-                }
-                
-                if (amountDueInput) {
-                    const amountVal = amountDueInput.value.trim();
-                    const amountNum = amountVal ? parseFloat(amountVal) : null;
-                    payload.amount_due = amountNum;
-                    payload.total_amount_due = amountNum;
-                    if (!payload.detailed_data) payload.detailed_data = {};
-                    payload.detailed_data.amount_due = amountNum;
-                    payload.detailed_data.total_amount_due = amountNum;
-                }
                 
                 // Ensure accounts array is updated in payload
                 payload.accounts = accounts;
@@ -10931,16 +10608,6 @@
                 
                 console.log('[loadProjectFromService] Loaded project:', projectId);
                 
-                // CRITICAL: Update URL with projectId so refresh works
-                updateUrlWithProjectId(projectId);
-                
-                // Also store in localStorage as backup
-                try {
-                    localStorage.setItem('lastProjectId', projectId);
-                } catch (e) {
-                    console.warn('[loadProjectFromService] Failed to store lastProjectId:', e);
-                }
-                
                 // Render embedded bills section
                 if (typeof renderEmbeddedBillsSection === 'function') {
                     renderEmbeddedBillsSection();
@@ -11088,9 +10755,6 @@
                             <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.85rem; color: #666; cursor: pointer;">
                                 <input type="checkbox" id="embeddedBillSelectAll" style="cursor: pointer;"> Select All
                             </label>
-                            <button id="embeddedBillCancelSelected" class="button" style="font-size: 0.8rem; padding: 0.3rem 0.6rem; display: none; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                                Cancel Selected
-                            </button>
                             <button id="embeddedBillDeleteSelected" class="button danger" style="font-size: 0.8rem; padding: 0.3rem 0.6rem; display: none;">
                                 Delete Selected
                             </button>
@@ -11153,7 +10817,6 @@
                                     </div>
                                 </div>
                                 <button class="embedded-file-view-btn" data-file-id="${file.id}" title="View">View</button>
-                                <button class="embedded-file-cancel-btn" data-file-id="${file.id}" data-status="${statusClass}" title="Cancel/Re-process">Cancel</button>
                                 <button class="embedded-file-delete-btn" data-file-id="${file.id}" data-has-extracted="${hasExtractedData}" title="Delete">Delete</button>
                             </div>
                         `;
@@ -11247,56 +10910,6 @@
                                 } catch (err) {
                                     console.error('[embeddedBills] Error deleting file:', err);
                                     showToast('Error deleting file', 'error');
-                                }
-                            }
-                        });
-                    });
-                    
-                    // Wire up Cancel button clicks (individual files)
-                    container.querySelectorAll('.embedded-file-cancel-btn').forEach(btn => {
-                        btn.addEventListener('click', async (e) => {
-                            e.stopPropagation();
-                            const fileId = btn.dataset.fileId;
-                            const fileName = btn.closest('.embedded-bill-file-row').querySelector('span').textContent.trim();
-                            const currentProjectId = ProjectState.currentProjectId || ProjectState.project_id;
-                            
-                            const confirmed = await showConfirmModal({
-                                title: 'Cancel Processing',
-                                message: `Cancel processing for:\n\n${fileName}`,
-                                confirmText: 'Cancel Processing',
-                                cancelText: 'Keep Processing',
-                                danger: false
-                            });
-                            if (confirmed) {
-                                try {
-                                    const response = await fetch(`/api/projects/${encodeURIComponent(currentProjectId)}/bills/files/${fileId}/cancel`, { method: 'POST' });
-                                    const result = await response.json();
-                                    
-                                    if (result.success) {
-                                        showToast('Processing cancelled', 'success');
-                                        // Update row status immediately
-                                        const row = btn.closest('.embedded-bill-file-row');
-                                        if (row) {
-                                            row.dataset.status = 'error';
-                                            const progressFill = row.querySelector('.progress-fill');
-                                            const progressText = row.querySelector('.progress-text');
-                                            if (progressFill) {
-                                                progressFill.classList.remove('processing', 'waiting');
-                                                progressFill.classList.add('error');
-                                            }
-                                            if (progressText) {
-                                                progressText.classList.remove('processing', 'waiting');
-                                                progressText.classList.add('error');
-                                                progressText.textContent = '✗ Cancelled';
-                                            }
-                                            btn.style.display = 'none';
-                                        }
-                                    } else {
-                                        showToast(result.error || 'Failed to cancel', 'error');
-                                    }
-                                } catch (err) {
-                                    console.error('[embeddedBills] Error cancelling file:', err);
-                                    showToast('Error cancelling file', 'error');
                                 }
                             }
                         });
@@ -11543,34 +11156,16 @@
                     const accountNum = account.accountNumber || account.account_number || 'unknown';
                     const meters = account.meters || [];
                     
-                    // Aggregate TOU from account combined data first
+                    // Aggregate TOU from account combined data (already summed by backend)
                     const accountTou = (account.combined || account).tou || {};
-                    let accountHasTou = (accountTou.onPeakKwh || 0) + (accountTou.midPeakKwh || 0) + (accountTou.offPeakKwh || 0) + (accountTou.superOffPeakKwh || 0) > 0;
-                    
-                    if (accountHasTou) {
-                        // Use account-level aggregated TOU
-                        facilityTouOnKwh += accountTou.onPeakKwh || 0;
-                        facilityTouOnCost += accountTou.onPeakCost || 0;
-                        facilityTouMidKwh += accountTou.midPeakKwh || 0;
-                        facilityTouMidCost += accountTou.midPeakCost || 0;
-                        facilityTouOffKwh += accountTou.offPeakKwh || 0;
-                        facilityTouOffCost += accountTou.offPeakCost || 0;
-                        facilityTouSuperOffKwh += accountTou.superOffPeakKwh || 0;
-                        facilityTouSuperOffCost += accountTou.superOffPeakCost || 0;
-                    } else {
-                        // Fallback: aggregate TOU from meters
-                        for (const m of meters) {
-                            const meterTou = m.tou || {};
-                            facilityTouOnKwh += meterTou.onPeakKwh || 0;
-                            facilityTouOnCost += meterTou.onPeakCost || 0;
-                            facilityTouMidKwh += meterTou.midPeakKwh || 0;
-                            facilityTouMidCost += meterTou.midPeakCost || 0;
-                            facilityTouOffKwh += meterTou.offPeakKwh || 0;
-                            facilityTouOffCost += meterTou.offPeakCost || 0;
-                            facilityTouSuperOffKwh += meterTou.superOffPeakKwh || 0;
-                            facilityTouSuperOffCost += meterTou.superOffPeakCost || 0;
-                        }
-                    }
+                    facilityTouOnKwh += accountTou.onPeakKwh || 0;
+                    facilityTouOnCost += accountTou.onPeakCost || 0;
+                    facilityTouMidKwh += accountTou.midPeakKwh || 0;
+                    facilityTouMidCost += accountTou.midPeakCost || 0;
+                    facilityTouOffKwh += accountTou.offPeakKwh || 0;
+                    facilityTouOffCost += accountTou.offPeakCost || 0;
+                    facilityTouSuperOffKwh += accountTou.superOffPeakKwh || 0;
+                    facilityTouSuperOffCost += accountTou.superOffPeakCost || 0;
                     
                     for (const meter of meters) {
                         const meterNumber = meter.meterNumber || meter.meter_number || 'unknown';
@@ -11596,20 +11191,8 @@
                 const facilityBlendedRate = facilityTotalKwh > 0 ? (facilityTotalCost / facilityTotalKwh) * 100 : 0;
                 const facilityAvgCostPerDay = facilitySumAvgPerDay;
                 
-                // Get all unique utilities with counts for header
-                const utilityCounts = {};
-                for (const account of data.accounts) {
-                    const utilityName = account.utilityName || account.utility_name || 'Electric Utility';
-                    const billCount = (account.meters || []).reduce((sum, m) => sum + (m.bills || []).length, 0);
-                    if (!utilityCounts[utilityName]) utilityCounts[utilityName] = 0;
-                    utilityCounts[utilityName] += billCount;
-                }
-                // Build utility display string: "SCE (9) & LADWP (1)" or just "SCE" if single utility
-                // Sort by bill count descending (most bills first)
-                const utilityEntries = Object.entries(utilityCounts).sort((a, b) => b[1] - a[1]);
-                const primaryUtility = utilityEntries.length === 1 
-                    ? utilityEntries[0][0]
-                    : utilityEntries.map(([name, count]) => `${name} (${count})`).join(' & ');
+                // Get utility name from first account for header
+                const primaryUtility = data.accounts[0]?.utilityName || data.accounts[0]?.utility_name || 'Electric Utility';
                 
                 // Build account list for header
                 // For LADWP, show full account number; for others, mask to last 4 digits
@@ -11654,32 +11237,30 @@
                     totalMeters += (account.meters || []).length;
                 }
                 
-                // Facility-wide totals banner (glassmorphism style)
+                // Facility-wide totals banner (blue, same style as account sections)
                 html += `
-                    <div class="facility-glass-container">
-                        <div class="facility-glass-header">
-                            <div class="facility-glass-utility">${primaryUtility}</div>
-                            <div class="facility-glass-pill">
-                                ${data.accounts.length} account${data.accounts.length !== 1 ? 's' : ''} • ${facilityBillCount} bill${facilityBillCount !== 1 ? 's' : ''}${dateRangePill ? ` • ${dateRangePill}` : ''}
-                            </div>
-                            <div class="facility-glass-section-title">
-                                <span>🏢</span> <span>Facility Summary</span>
-                            </div>
+                    <div style="background: linear-gradient(135deg, #3b82f6, #60a5fa); color: white; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; text-align: center;">
+                        <div style="font-weight: 700; font-size: 1.2rem;">${primaryUtility}</div>
+                        <div style="display: inline-block; background: rgba(255,255,255,0.2); border-radius: 12px; padding: 0.25rem 0.75rem; font-size: 0.8rem; margin: 0.5rem 0;">
+                            ${data.accounts.length} account${data.accounts.length !== 1 ? 's' : ''} • ${facilityBillCount} bill${facilityBillCount !== 1 ? 's' : ''}${dateRangePill ? ` • ${dateRangePill}` : ''}
                         </div>
-                        <div class="facility-glass-stats">
-                            <div class="facility-glass-stat">
+                        <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin: 0.5rem 0 0.75rem; font-size: 0.95rem; font-weight: 600;">
+                            <span>🏢</span> <span>Facility Summary</span>
+                        </div>
+                        <div class="facility-stats-grid">
+                            <div style="background: rgba(255,255,255,0.15); border-radius: 6px; padding: 0.5rem;">
                                 <div class="stat-value">${formatBillValue(facilityTotalKwh, 'kwh')}</div>
                                 <div class="stat-label">Total kWh</div>
                             </div>
-                            <div class="facility-glass-stat">
+                            <div style="background: rgba(255,255,255,0.15); border-radius: 6px; padding: 0.5rem;">
                                 <div class="stat-value">${formatBillValue(facilityTotalCost, 'cost')}</div>
                                 <div class="stat-label">Total Cost</div>
                             </div>
-                            <div class="facility-glass-stat">
+                            <div style="background: rgba(255,255,255,0.15); border-radius: 6px; padding: 0.5rem;">
                                 <div class="stat-value">${formatBillValue(facilityBlendedRate, 'rate')}</div>
                                 <div class="stat-label">Rate/kWh</div>
                             </div>
-                            <div class="facility-glass-stat">
+                            <div style="background: rgba(255,255,255,0.15); border-radius: 6px; padding: 0.5rem;">
                                 <div class="stat-value">${formatBillValue(facilityAvgCostPerDay, 'avgDay')}</div>
                                 <div class="stat-label">Avg/Day</div>
                             </div>
@@ -11691,36 +11272,36 @@
                             
                             const totalTouKwh = facilityTouOnKwh + facilityTouMidKwh + facilityTouOffKwh + facilityTouSuperOffKwh;
                             
-                            // TOU config with class names for glassmorphism cards
+                            // TOU config with colors
                             const touItems = [
-                                { kwh: facilityTouOnKwh, cost: facilityTouOnCost, cssClass: 'tou-on-peak', barColor: '#dc2626', label: 'ON PEAK' },
-                                { kwh: facilityTouMidKwh, cost: facilityTouMidCost, cssClass: 'tou-mid-peak', barColor: '#f59e0b', label: 'MID PEAK' },
-                                { kwh: facilityTouOffKwh, cost: facilityTouOffCost, cssClass: 'tou-off-peak', barColor: '#22c55e', label: 'OFF PEAK' },
-                                { kwh: facilityTouSuperOffKwh, cost: facilityTouSuperOffCost, cssClass: 'tou-super-off', barColor: '#3b82f6', label: 'SUPER OFF-PEAK' }
+                                { kwh: facilityTouOnKwh, cost: facilityTouOnCost, color: '#e53935', label: 'ON PEAK' },
+                                { kwh: facilityTouMidKwh, cost: facilityTouMidCost, color: '#ff9800', label: 'MID PEAK' },
+                                { kwh: facilityTouOffKwh, cost: facilityTouOffCost, color: '#4caf50', label: 'OFF PEAK' },
+                                { kwh: facilityTouSuperOffKwh, cost: facilityTouSuperOffCost, color: '#2196f3', label: 'SUPER OFF-PEAK' }
                             ].filter(t => t.kwh > 0);
                             
-                            // Build percentage bar with glassmorphism styling
-                            let barHtml = '<div class="facility-glass-tou-bar">';
+                            // Build percentage bar
+                            let barHtml = '<div style="display: flex; gap: 2px; margin-bottom: 0.75rem; height: 8px; border-radius: 4px; overflow: hidden;">';
                             touItems.forEach(t => {
                                 const pct = totalTouKwh > 0 ? (t.kwh / totalTouKwh * 100) : 0;
-                                if (pct > 0) barHtml += '<div style="width: ' + pct + '%; background: ' + t.barColor + ';"></div>';
+                                if (pct > 0) barHtml += '<div style="width: ' + pct + '%; background: ' + t.color + ';"></div>';
                             });
                             barHtml += '</div>';
                             
-                            // Build TOU cards with glassmorphism styling
-                            let cardsHtml = '<div class="facility-glass-tou-cards">';
+                            // Build TOU cards with full vibrant colors
+                            let cardsHtml = '<div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">';
                             touItems.forEach(t => {
                                 const rate = t.kwh > 0 ? ((t.cost / t.kwh) * 100).toFixed(1) : '0.0';
-                                cardsHtml += '<div class="facility-glass-tou-card ' + t.cssClass + '">';
-                                cardsHtml += '<div class="tou-label">' + t.label + '</div>';
-                                cardsHtml += '<div class="tou-kwh">' + formatBillValue(t.kwh, 'kwh') + '</div>';
-                                cardsHtml += '<div class="tou-cost">' + formatBillValue(t.cost, 'cost') + '</div>';
-                                cardsHtml += '<div class="tou-rate">' + rate + '¢/kWh</div>';
+                                cardsHtml += '<div style="flex: 1; min-width: 100px; background: ' + t.color + '; border-radius: 6px; padding: 0.5rem; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">';
+                                cardsHtml += '<div style="font-size: 0.65rem; font-weight: 700; margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.5px;">' + t.label + '</div>';
+                                cardsHtml += '<div style="font-size: 0.85rem; font-weight: 700;">' + formatBillValue(t.kwh, 'kwh') + '</div>';
+                                cardsHtml += '<div style="font-size: 0.75rem; opacity: 0.95;">' + formatBillValue(t.cost, 'cost') + '</div>';
+                                cardsHtml += '<div style="font-size: 0.7rem; opacity: 0.9;">' + rate + '¢/kWh</div>';
                                 cardsHtml += '</div>';
                             });
                             cardsHtml += '</div>';
                             
-                            return '<div class="facility-glass-tou"><div class="facility-glass-section-title"><span>⚡</span> <span>Time-of-Use Breakdown</span></div>' + barHtml + cardsHtml + '</div>';
+                            return '<div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.2);"><div style="font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;"><span>⚡</span> Time-of-Use Breakdown</div>' + barHtml + cardsHtml + '</div>';
                         })()}
                     </div>
                 `;
@@ -11782,7 +11363,7 @@
                                 </div>
                                 <div style="background: rgba(21, 101, 192, 0.1); padding: 0.5rem 1rem; font-size: 0.85rem; color: #555; display: flex; justify-content: space-between; align-items: center;">
                                     <span>${dateRangeLabel}</span>
-                                    ${bills.length > 1 ? `<span class="expand-all-bills-toggle" data-meter-id="${meterId}" title="Expand/Collapse all bills" style="cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 4px; border: 1px solid rgba(21, 101, 192, 0.3); background: rgba(255,255,255,0.5); color: #1565c0; font-size: 0.75rem; display: flex; align-items: center; gap: 0.25rem; user-select: none;"><span class="expand-all-icon" style="transition: transform 0.2s; transform: rotate(-90deg);">▼</span></span>` : ''}
+                                    ${bills.length > 1 ? `<span class="expand-all-bills-toggle" data-meter-id="${meterId}" title="Expand/Collapse all bills" style="cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 4px; border: 1px solid rgba(21, 101, 192, 0.3); background: rgba(255,255,255,0.5); color: #1565c0; font-size: 0.75rem; display: flex; align-items: center; gap: 0.25rem; user-select: none;"><span class="expand-all-icon" style="transition: transform 0.2s;">▼</span></span>` : ''}
                                 </div>
                                 <div class="embedded-meter-header" data-meter-id="${meterId}" style="background: #fff; padding: 0.75rem 1rem; cursor: pointer; border-bottom: 1px solid #e0e0e0;">
                                     <div class="embedded-meter-stats-row">
@@ -11871,63 +11452,44 @@
             localStorage.setItem('embeddedBillsFilesCollapsed', isHidden ? 'false' : 'true');
         };
         
-        // Quick access to view a bill's PDF from anywhere
-        window.viewBillPdf = function(fileId) {
-            if (!fileId) return;
-            // Call the existing PDF viewer function
-            if (typeof openBillPdfModal === 'function') {
-                openBillPdfModal(fileId, 'Bill PDF');
-            } else {
-                // Fallback: open in new tab
-                window.open(`/api/bills/file/${fileId}/pdf`, '_blank');
-            }
-        };
-        
         window.toggleEmbeddedMeter = function(meterId) {
             const billsContainer = document.getElementById(`embedded-meter-bills-${meterId}`);
-            const meterIcon = document.querySelector(`.meter-expand-icon[data-meter-id="${meterId}"]`);
-            
+            const icon = document.querySelector(`.meter-expand-icon[data-meter-id="${meterId}"]`);
             if (billsContainer) {
                 const isHidden = billsContainer.style.display === 'none' || !billsContainer.style.display;
                 billsContainer.style.display = isHidden ? 'block' : 'none';
                 // Arrow down (0deg) = expanded, Arrow right (-90deg) = collapsed
-                // Only update the meter header icon - NOT the expand-all icon (keep them independent)
-                if (meterIcon) meterIcon.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(-90deg)';
+                if (icon) icon.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(-90deg)';
             }
         };
         
         // Toggle all bill details within a meter section (expand or collapse all)
-        // This is the "# Bills" dropdown arrow - it ONLY controls bill row expansion, NOT the meter section
-        // - rotate(-90deg) = collapsed (horizontal arrow pointing right) - bills are in line-item view
-        // - rotate(0deg) = expanded (arrow pointing down) - bills show full details
         window.toggleAllBillsInMeter = function(meterId, toggleElement) {
             const billsContainer = document.getElementById(`embedded-meter-bills-${meterId}`);
             if (!billsContainer) return;
             
-            const expandAllIcon = toggleElement ? toggleElement.querySelector('.expand-all-icon') : null;
-            
-            // First, make sure the meter section (Billing History) is visible
+            // First, make sure the meter section is expanded
             if (billsContainer.style.display === 'none' || !billsContainer.style.display) {
-                billsContainer.style.display = 'block';
-                // Update ONLY the meter header icon when we expand it
-                const meterIcon = document.querySelector(`.meter-expand-icon[data-meter-id="${meterId}"]`);
-                if (meterIcon) meterIcon.style.transform = 'rotate(0deg)';
+                window.toggleEmbeddedMeter(meterId);
             }
             
             // Get all bill detail elements within this meter
             const billDetails = billsContainer.querySelectorAll('.embedded-bill-detail');
             const billRows = billsContainer.querySelectorAll('.embedded-bill-row');
             
-            // Check if any bill details are currently expanded
-            let anyBillsExpanded = false;
+            // Check if any are currently expanded
+            let anyExpanded = false;
             billDetails.forEach(detail => {
                 if (detail.style.display !== 'none') {
-                    anyBillsExpanded = true;
+                    anyExpanded = true;
                 }
             });
             
-            if (anyBillsExpanded) {
-                // Collapse all bill details
+            // Toggle icon in the expand-all button
+            const icon = toggleElement.querySelector('.expand-all-icon');
+            
+            if (anyExpanded) {
+                // Collapse all
                 billDetails.forEach(detail => {
                     detail.style.display = 'none';
                 });
@@ -11935,10 +11497,9 @@
                     const rowIcon = row.querySelector('.bill-expand-icon');
                     if (rowIcon) rowIcon.style.transform = 'rotate(0deg)';
                 });
-                // Only update THIS icon (the expand-all icon)
-                if (expandAllIcon) expandAllIcon.style.transform = 'rotate(-90deg)';
+                if (icon) icon.style.transform = 'rotate(-90deg)';
             } else {
-                // Expand all bill details
+                // Expand all - trigger each bill to load its details
                 billRows.forEach(row => {
                     const billId = row.dataset.billId;
                     if (billId) {
@@ -11948,8 +11509,7 @@
                         }
                     }
                 });
-                // Only update THIS icon (the expand-all icon)
-                if (expandAllIcon) expandAllIcon.style.transform = 'rotate(0deg)';
+                if (icon) icon.style.transform = 'rotate(0deg)';
             }
         };
         
@@ -11982,23 +11542,6 @@
             } else {
                 // Fallback: open PDF in new tab
                 window.open(`/api/bills/file/${fileId}/pdf`, '_blank');
-            }
-        };
-        
-        // Global function to open bill review modal directly in EDIT mode
-        window.openBillReviewEdit = function(fileId) {
-            const projectId = ProjectState.currentProjectId || ProjectState.project_id;
-            if (!projectId) {
-                console.error('[openBillReviewEdit] No project ID available');
-                return;
-            }
-            // Use NavigationController's openBillReview method with startInEditMode=true
-            if (typeof NavigationController !== 'undefined' && NavigationController.openBillReview) {
-                NavigationController.setupReviewModalHandlers(projectId);
-                NavigationController.openBillReview(projectId, fileId, true); // true = start in edit mode
-            } else {
-                // Fallback: just open the normal modal
-                window.openBillReviewModal(fileId);
             }
         };
         
@@ -12063,19 +11606,10 @@
                             const peakDemand = bill.demand || bill.peakDemand || bill.peak_demand || 0;
                             const hasDemand = peakDemand > 0;
                             
-                            // Get file ID for View Bill button (API returns billFileId)
-                            const fileId = bill.file_id || bill.fileId || bill.billFileId || billId;
-                            
                             let detailHtml = `
                                 <!-- Bill Summary Section -->
                                 <div style="background: white; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 0.75rem; overflow: hidden;">
-                                    <div style="background: #f5f5f5; padding: 0.5rem 0.75rem; font-weight: 600; color: #333; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
-                                        <span>📋 Bill Summary</span>
-                                        <div style="display: flex; gap: 0.4rem;">
-                                            <button onclick="window.openBillReviewEdit(${fileId}); event.stopPropagation();" style="background: #666; color: white; border: none; border-radius: 4px; padding: 0.3rem 0.6rem; font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 0.25rem;">✏️ Edit</button>
-                                            <button onclick="window.viewBillPdf(${fileId}); event.stopPropagation();" style="background: #1565c0; color: white; border: none; border-radius: 4px; padding: 0.3rem 0.6rem; font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 0.25rem;">📄 View Bill</button>
-                                        </div>
-                                    </div>
+                                    <div style="background: #f5f5f5; padding: 0.5rem 0.75rem; font-weight: 600; color: #333; border-bottom: 1px solid #ddd;">📋 Bill Summary</div>
                                     <div style="padding: 0.75rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; font-size: 0.85rem;">
                                         <div>
                                             <div style="color: #666; font-size: 0.75rem; text-transform: uppercase;">Service Address</div>
@@ -12180,7 +11714,7 @@
                                                     <div style="width: 10px; height: 10px; background: ${t.color}; border-radius: 2px;"></div>
                                                     <span style="font-size: 0.7rem; font-weight: 600; color: #555;">${t.label}</span>
                                                 </div>
-                                                <div style="font-size: 0.9rem; font-weight: 600; color: #333;">${formatBillValue(kwh, 'kwh')}</div>
+                                                <div style="font-size: 0.9rem; font-weight: 600; color: #333;">${formatBillValue(kwh, 'kwh')} kWh</div>
                                                 <div style="font-size: 0.8rem; color: #555;">${formatBillValue(cost, 'cost')}</div>
                                                 <div style="font-size: 0.75rem; color: #888;">${formatBillValue(parseFloat(rate), 'rate')}/kWh</div>
                                             </div>
@@ -12256,28 +11790,16 @@
             // Multi-select functionality
             const selectAllCheckbox = document.getElementById('embeddedBillSelectAll');
             let deleteSelectedBtn = document.getElementById('embeddedBillDeleteSelected');
-            let cancelSelectedBtn = document.getElementById('embeddedBillCancelSelected');
 
-            function updateButtonVisibility() {
+            function updateDeleteButtonVisibility() {
                 const checkedCount = document.querySelectorAll('.embedded-bill-checkbox:checked').length;
-                
-                // Cancel button - show whenever files are selected
-                const cancelBtn = document.getElementById('embeddedBillCancelSelected');
-                if (cancelBtn) {
-                    cancelBtn.style.display = checkedCount > 0 ? 'inline-block' : 'none';
-                    cancelBtn.textContent = checkedCount > 1 ? `Cancel ${checkedCount} Selected` : 'Cancel Selected';
-                }
-                
-                // Delete button
-                const deleteBtn = document.getElementById('embeddedBillDeleteSelected');
-                if (deleteBtn) {
-                    deleteBtn.style.display = checkedCount > 0 ? 'inline-block' : 'none';
-                    deleteBtn.textContent = checkedCount > 1 ? `Delete ${checkedCount} Selected` : 'Delete Selected';
+                // Always get fresh reference in case button was replaced
+                const btn = document.getElementById('embeddedBillDeleteSelected');
+                if (btn) {
+                    btn.style.display = checkedCount > 0 ? 'inline-block' : 'none';
+                    btn.textContent = checkedCount > 1 ? `Delete ${checkedCount} Selected` : 'Delete Selected';
                 }
             }
-            
-            // Alias for backwards compatibility
-            const updateDeleteButtonVisibility = updateButtonVisibility;
 
             // Delete Selected button - clone to remove old listeners FIRST
             if (deleteSelectedBtn) {
@@ -12310,33 +11832,30 @@
                     });
                     if (!confirmed) return;
 
-                    // Delete all files in PARALLEL for speed
-                    const deletePromises = fileIds.map(async (fileId) => {
+                    let deleted = 0;
+                    let failed = 0;
+                    for (const fileId of fileIds) {
+                        console.log(`[embeddedBills] Deleting file ${fileId}...`);
                         try {
                             const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/files/${fileId}`, { method: 'DELETE' });
                             const result = await resp.json();
-                            return { fileId, success: result.success, error: result.error };
+                            console.log(`[embeddedBills] Delete response for ${fileId}:`, result);
+                            if (result.success) {
+                                deleted++;
+                                console.log(`[embeddedBills] Deleted count now: ${deleted}`);
+                                const row = document.querySelector(`.embedded-bill-file-row[data-file-id="${fileId}"]`);
+                                if (row) row.remove();
+                            } else {
+                                failed++;
+                                console.error('[embeddedBills] Delete failed:', result.error);
+                            }
                         } catch (err) {
-                            return { fileId, success: false, error: err.message };
+                            failed++;
+                            console.error('[embeddedBills] Delete error:', err);
                         }
-                    });
+                    }
 
-                    const results = await Promise.all(deletePromises);
-                    
-                    // Collect successful and failed deletions
-                    const deletedIds = results.filter(r => r.success).map(r => r.fileId);
-                    const failedCount = results.filter(r => !r.success).length;
-                    
-                    console.log(`[embeddedBills] Parallel delete complete - deleted: ${deletedIds.length}, failed: ${failedCount}`);
-
-                    // Batch remove all deleted rows at once (prevents page jumping)
-                    deletedIds.forEach(fileId => {
-                        const row = document.querySelector(`.embedded-bill-file-row[data-file-id="${fileId}"]`);
-                        if (row) row.remove();
-                    });
-                    
-                    const deleted = deletedIds.length;
-                    const failed = failedCount;
+                    console.log(`[embeddedBills] Final counts - deleted: ${deleted}, failed: ${failed}`);
 
                     // Show detailed message about deletions
                     if (deleted > 0 && failed === 0) {
@@ -12348,7 +11867,7 @@
                     }
 
                     if (deleted > 0) {
-                        updateButtonVisibility();
+                        updateDeleteButtonVisibility();
                         // Reset select-all checkbox
                         const selectAllCb = document.getElementById('embeddedBillSelectAll');
                         if (selectAllCb) selectAllCb.checked = false;
@@ -12361,83 +11880,6 @@
                             renderEmbeddedBillsSection();
                         }
                     }
-                });
-            }
-
-            // Cancel Selected button
-            if (cancelSelectedBtn) {
-                const newCancelBtn = cancelSelectedBtn.cloneNode(true);
-                cancelSelectedBtn.parentNode.replaceChild(newCancelBtn, cancelSelectedBtn);
-                cancelSelectedBtn = newCancelBtn;
-
-                newCancelBtn.addEventListener('click', async function() {
-                    const checkedBoxes = document.querySelectorAll('.embedded-bill-checkbox:checked');
-                    const fileIds = Array.from(checkedBoxes).map(cb => cb.dataset.fileId);
-
-                    if (fileIds.length === 0) return;
-
-                    const confirmMsg = fileIds.length === 1
-                        ? 'Cancel/reset this bill?'
-                        : `Cancel/reset ${fileIds.length} bills?`;
-
-                    const confirmed = await showConfirmModal({
-                        title: 'Cancel Bills',
-                        message: confirmMsg,
-                        confirmText: 'Cancel',
-                        cancelText: 'Keep',
-                        danger: false
-                    });
-                    if (!confirmed) return;
-
-                    // Cancel all files in PARALLEL for speed
-                    const cancelPromises = fileIds.map(async (fileId) => {
-                        try {
-                            const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/files/${fileId}/cancel`, { method: 'POST' });
-                            const result = await resp.json();
-                            return { fileId, success: result.success };
-                        } catch (err) {
-                            console.error('[embeddedBills] Cancel error:', err);
-                            return { fileId, success: false };
-                        }
-                    });
-
-                    const results = await Promise.all(cancelPromises);
-                    const cancelledIds = results.filter(r => r.success).map(r => r.fileId);
-                    const failed = results.filter(r => !r.success).length;
-
-                    // Batch update all cancelled rows at once
-                    cancelledIds.forEach(fileId => {
-                        const row = document.querySelector(`.embedded-bill-file-row[data-file-id="${fileId}"]`);
-                        if (row) {
-                            row.dataset.status = 'error';
-                            const progressFill = row.querySelector('.progress-fill');
-                            const progressText = row.querySelector('.progress-text');
-                            const cancelBtn = row.querySelector('.embedded-file-cancel-btn');
-                            if (progressFill) {
-                                progressFill.classList.remove('processing', 'waiting');
-                                progressFill.classList.add('error');
-                            }
-                            if (progressText) {
-                                progressText.classList.remove('processing', 'waiting');
-                                progressText.classList.add('error');
-                                progressText.textContent = '✗ Cancelled';
-                            }
-                            if (cancelBtn) cancelBtn.style.display = 'none';
-                        }
-                    });
-
-                    const cancelled = cancelledIds.length;
-                    if (cancelled > 0 && failed === 0) {
-                        showToast(`${cancelled} file${cancelled === 1 ? '' : 's'} cancelled`, 'success');
-                    } else if (cancelled > 0 && failed > 0) {
-                        showToast(`${cancelled} cancelled, ${failed} failed`, 'warning');
-                    } else if (failed > 0) {
-                        showToast(`Failed to cancel ${failed} file${failed === 1 ? '' : 's'}`, 'error');
-                    }
-
-                    updateButtonVisibility();
-                    const selectAllCb = document.getElementById('embeddedBillSelectAll');
-                    if (selectAllCb) selectAllCb.checked = false;
                 });
             }
 
