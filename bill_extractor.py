@@ -623,6 +623,74 @@ def _normalize_date_to_iso(date_str):
     return date_str  # Return as-is if can't parse
 
 
+def extract_with_multi_location_validation(raw_text, patterns_with_confidence, field_name="value", tolerance_pct=0.02):
+    """
+    Extract a value from MULTIPLE locations and cross-validate using voting.
+    This catches OCR errors when one location is garbled but another is clear.
+    
+    Args:
+        raw_text: The OCR'd text to search
+        patterns_with_confidence: List of tuples (regex_pattern, source_name, confidence_score)
+        field_name: Name for logging (e.g., "kWh", "amount")
+        tolerance_pct: Percentage tolerance for considering values "equal" (default 2%)
+    
+    Returns:
+        (best_value, source_name, all_candidates) or (None, None, [])
+    """
+    import re
+    
+    candidates = []
+    
+    # Extract all candidates from all patterns
+    for pattern, source, confidence in patterns_with_confidence:
+        try:
+            for match in re.finditer(pattern, raw_text, re.IGNORECASE):
+                try:
+                    value_str = match.group(1).replace(",", "")
+                    value = float(value_str)
+                    if value > 0:
+                        candidates.append({
+                            "value": value, 
+                            "source": source, 
+                            "confidence": confidence,
+                            "raw_match": match.group(0)[:50]
+                        })
+                except (ValueError, TypeError, IndexError):
+                    pass
+        except re.error:
+            pass
+    
+    if not candidates:
+        return None, None, []
+    
+    # Log all candidates found
+    print(f"[multi-location] {field_name}: Found {len(candidates)} candidates:")
+    for c in candidates[:10]:  # Show first 10
+        print(f"[multi-location]   - {c['value']:,.2f} from '{c['source']}' (conf: {c['confidence']:.2f})")
+    
+    # VOTING: Group similar values (within tolerance)
+    # If 2+ sources agree, that's high confidence
+    if len(candidates) >= 2:
+        for i, c1 in enumerate(candidates):
+            agreeing = [c1]
+            for j, c2 in enumerate(candidates):
+                if i != j:
+                    # Check if values are within tolerance
+                    if c1["value"] > 0 and abs(c1["value"] - c2["value"]) / c1["value"] <= tolerance_pct:
+                        agreeing.append(c2)
+            
+            if len(agreeing) >= 2:
+                # Multiple sources agree - use highest confidence among them
+                best = max(agreeing, key=lambda x: x["confidence"])
+                print(f"[multi-location] {field_name}: VALIDATED! {len(agreeing)} sources agree on {best['value']:,.2f}")
+                return best["value"], best["source"], candidates
+    
+    # No agreement - use highest confidence single source
+    best = max(candidates, key=lambda x: x["confidence"])
+    print(f"[multi-location] {field_name}: Using single best source: {best['value']:,.2f} from '{best['source']}'")
+    return best["value"], best["source"], candidates
+
+
 def regex_extract_all_fields(raw_text):
     """
     Extract ALL bill fields using regex patterns BEFORE calling AI.
@@ -1088,169 +1156,120 @@ def regex_extract_all_fields(raw_text):
                 print(f"[regex_extract] due_date: {due_raw} -> {result['due_date']}")
                 break
     
-    # ========== TOTAL KWH ==========
-    # Run kWh extraction regardless of initial service_type detection
-    # If we find kWh, that confirms it's electric
+    # ========== TOTAL KWH (Multi-Location Validation) ==========
+    # SCE bills show kWh in MULTIPLE locations. We extract from ALL and cross-validate.
+    # This catches OCR errors when one location is garbled but another is clear.
     #
-    # SCE FORMAT OBSERVED:
-    #   Page 3: "Total electricity you used this month in kWh    160,474"
-    #   Also on page 3: Table showing On peak/Mid peak/Off peak summing to 160474 kWh
-    #
-    kwh_patterns = [
-        # ===== SCE SPECIFIC (HIGHEST PRIORITY) =====
-        # SCE Page 3: "Total electricity you used this month in kWh    160,474"
-        # Use flexible pattern to handle OCR garbling
-        r"Total\s+electricity\s+you\s+used\s+this\s+month\s+in\s+kWh\s+([\d,]+)",
-        r"Total\s+electricity\s+you\s+used[\s\S]{0,50}?in\s*kWh\s+([\d,]+)",
-        r"Total\s+electricity[\s\S]{0,30}?this\s+month[\s\S]{0,30}?([\d,]{5,})",
-        # SCE: "Total electricity you used this month in kWh" followed by number on next line
-        r"Total\s+electricity\s+you\s+used[\s\S]{0,50}?([\d,]{5,})",
-        # SCE summary table: look for the LARGEST kWh after TOU periods (that's the total)
-        # Pattern: On/Mid/Off peak rows followed by a total line showing XXX,XXX kWh
-        r"(?:On|Off|Mid|Super)[^\n]*kWh[^\n]*\n(?:[^\n]*kWh[^\n]*\n){1,5}\s*([\d,]{5,})\s*kWh",
-        # SCE: "XXX,XXX kWh" followed by "Energy Charges" (the total line above charges)
-        r"([\d,]{5,})\s*kWh\s*\$?[\d,]+(?:\.\d+)?\s*Energy\s*Charges",
+    # Confidence scores: 1.0 = most reliable (explicit "Total" label), 0.3 = fallback
+    kwh_patterns_with_confidence = [
+        # ===== SCE EXPLICIT TOTAL (HIGHEST CONFIDENCE) =====
+        (r"Total\s+electricity\s+you\s+used\s+this\s+month\s+in\s+kWh\s+([\d,]+)", "sce_total_explicit", 1.0),
+        (r"Total\s+electricity\s+you\s+used[\s\S]{0,50}?in\s*kWh\s+([\d,]+)", "sce_total_flexible", 0.95),
+        (r"Total\s+electricity[\s\S]{0,30}?this\s+month[\s\S]{0,30}?([\d,]{5,})", "sce_total_nearby", 0.90),
         
-        # ===== LADWP SPECIFIC =====
-        # LADWP: "Electric Charges 10/24/25 - 11/26/25 81,920 kWh"
-        r"Electric\s*Charges\s*\d{1,2}/\d{1,2}/\d{2,4}\s*[-–]\s*\d{1,2}/\d{1,2}/\d{2,4}\s*([\d,]+(?:\.\d+)?)\s*kWh",
-        # LADWP: "Total kWh Consumption"
-        r"Total\s*kWh\s*Consumption[^\d]*([\d,]+(?:\.\d+)?)",
+        # ===== EXPLICIT "TOTAL" LABELS (HIGH CONFIDENCE) =====
+        (r"Total\s*kWh[:\s]*([\d,]+(?:\.\d+)?)", "total_kwh_label", 0.95),
+        (r"Total\s*(?:Usage|Energy)[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "total_usage_label", 0.92),
+        (r"([\d,]+(?:\.\d+)?)\s*kWh\s*Total", "kwh_total_suffix", 0.90),
+        (r"Total\s*Consumption[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "total_consumption", 0.90),
+        (r"Total\s*Billed\s*kWh[:\s]*([\d,]+(?:\.\d+)?)", "total_billed_kwh", 0.90),
         
-        # ===== GENERIC TOTAL PATTERNS =====
-        # Total Usage/kWh/Energy
-        r"Total\s*(?:Usage|kWh|Energy)[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-        r"Total\s*(?:Usage|kWh|Energy)[:\s]*([\d,]+(?:\.\d+)?)\s*(?:kilowatt)",
-        # X kWh Total
-        r"([\d,]+(?:\.\d+)?)\s*kWh\s*Total",
-        # Total kWh:
-        r"Total\s*kWh[:\s]*([\d,]+(?:\.\d+)?)",
-        # Total Consumption
-        r"Total\s*Consumption[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-        # Electricity Used
-        r"Electricity\s*Used[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-        # Total Billed kWh
-        r"Total\s*Billed\s*kWh[:\s]*([\d,]+(?:\.\d+)?)",
-        # Your usage this month
-        r"Your\s*[Uu]sage\s*(?:this\s*month)?[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-        r"Billed\s*kWh[:\s]*([\d,]+(?:\.\d+)?)",
-        r"kWh\s*Billed[:\s]*([\d,]+(?:\.\d+)?)",
-        # Usage: X kWh
-        r"Usage[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-        # kWh Used
-        r"kWh\s*Used[:\s]*([\d,]+(?:\.\d+)?)",
-        # kWh Delivered
-        r"kWh\s*Delivered[:\s]*([\d,]+(?:\.\d+)?)",
-        # Electric Delivery
-        r"Electric\s*Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-        # Energy Charges ... X kWh (but NOT individual TOU periods)
-        r"Energy\s*Charges[\s\S]{0,20}?([\d,]{5,})\s*kWh",
-        # Table formats - usually totals
-        r"Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-        r"Generation[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-        # Meter Reading shows kWh (but careful - may be partial)
-        r"Meter\s*Reading.*?Total.*?([\d,]+(?:\.\d+)?)\s*kWh",
-        # X kWh near "usage" or "used"
-        r"[Uu](?:sage|sed)[:\s]*([\d,]{5,})\s*kWh",
+        # ===== LADWP SPECIFIC (HIGH CONFIDENCE) =====
+        (r"Electric\s*Charges\s*\d{1,2}/\d{1,2}/\d{2,4}\s*[-–]\s*\d{1,2}/\d{1,2}/\d{2,4}\s*([\d,]+(?:\.\d+)?)\s*kWh", "ladwp_charges", 0.95),
+        (r"Total\s*kWh\s*Consumption[^\d]*([\d,]+(?:\.\d+)?)", "ladwp_consumption", 0.92),
         
-        # ===== LOW PRIORITY - MAY CATCH TOU PERIODS =====
-        # SCE table: "On peak [bar] 25246 kWh" - ONLY USE IF NOTHING ELSE MATCHED
-        # NOTE: This may catch individual TOU period, not total!
-        r"(?:On|Off|Mid|Super)\s*(?:off\s*)?peak\s*[\s\S]{0,50}?([\d,]+)\s*kWh",
-        # Standalone large number + kWh (last resort - may be partial)
-        r"\b([\d,]{4,})\s*kWh\b",
+        # ===== SCE SUMMARY TABLE (MEDIUM-HIGH CONFIDENCE) =====
+        (r"([\d,]{5,})\s*kWh\s*\$?[\d,]+(?:\.\d+)?\s*Energy\s*Charges", "sce_before_charges", 0.85),
+        (r"(?:On|Off|Mid|Super)[^\n]*kWh[^\n]*\n(?:[^\n]*kWh[^\n]*\n){1,5}\s*([\d,]{5,})\s*kWh", "sce_after_tou", 0.82),
+        
+        # ===== GENERIC LABELED (MEDIUM CONFIDENCE) =====
+        (r"Your\s*[Uu]sage\s*(?:this\s*month)?[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "your_usage", 0.85),
+        (r"Electricity\s*Used[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "electricity_used", 0.85),
+        (r"Billed\s*kWh[:\s]*([\d,]+(?:\.\d+)?)", "billed_kwh", 0.80),
+        (r"kWh\s*Billed[:\s]*([\d,]+(?:\.\d+)?)", "kwh_billed", 0.80),
+        (r"Usage[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "usage_kwh", 0.78),
+        (r"kWh\s*Used[:\s]*([\d,]+(?:\.\d+)?)", "kwh_used", 0.78),
+        (r"kWh\s*Delivered[:\s]*([\d,]+(?:\.\d+)?)", "kwh_delivered", 0.75),
+        (r"Electric\s*Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "electric_delivery", 0.75),
+        
+        # ===== CONTEXTUAL (MEDIUM-LOW CONFIDENCE) =====
+        (r"Energy\s*Charges[\s\S]{0,20}?([\d,]{5,})\s*kWh", "energy_charges_context", 0.70),
+        (r"Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "delivery", 0.68),
+        (r"Generation[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "generation", 0.68),
+        (r"Meter\s*Reading.*?Total.*?([\d,]+(?:\.\d+)?)\s*kWh", "meter_reading_total", 0.65),
+        (r"[Uu](?:sage|sed)[:\s]*([\d,]{5,})\s*kWh", "usage_nearby", 0.60),
+        
+        # ===== LOW CONFIDENCE - MAY CATCH TOU PERIODS =====
+        (r"(?:On|Off|Mid|Super)\s*(?:off\s*)?peak\s*[\s\S]{0,50}?([\d,]+)\s*kWh", "tou_period_maybe", 0.40),
+        (r"\b([\d,]{5,})\s*kWh\b", "standalone_kwh", 0.35),
     ]
-    for pattern in kwh_patterns:
-        match = re.search(pattern, raw_text, re.IGNORECASE)
-        if match:
-            try:
-                kwh_str = match.group(1).replace(",", "")
-                kwh_val = float(kwh_str)
-                # Sanity check - kWh should be reasonable (not a phone number, etc.)
-                if kwh_val > 0 and kwh_val < 10000000:
-                    result["total_kwh"] = kwh_val
-                    # If we found kWh, this is definitely electric
-                    if result["service_type"] not in ("electric", "combined"):
-                        result["service_type"] = "electric"
-                        print(f"[regex_extract] Found kWh - upgrading service_type to 'electric'")
-                    print(f"[regex_extract] total_kwh: {result['total_kwh']}")
-                    break
-            except (ValueError, TypeError):
-                pass
     
-    # ========== TOTAL AMOUNT ==========
-    # SCE FORMAT OBSERVED:
-    #   Page 1: "Your new charges $37,225.88" - THIS IS THE ACTUAL BILL FOR THIS PERIOD
-    #   Page 1: "Amount due $78,352.71" - includes past due amounts + late fees (NOT what we want!)
+    # Use multi-location validation to get the best kWh value
+    kwh_value, kwh_source, kwh_candidates = extract_with_multi_location_validation(
+        raw_text, kwh_patterns_with_confidence, "kWh", tolerance_pct=0.03  # 3% tolerance
+    )
+    
+    if kwh_value and kwh_value > 0 and kwh_value < 10000000:
+        result["total_kwh"] = kwh_value
+        result["_kwh_source"] = kwh_source
+        result["_kwh_candidates_count"] = len(kwh_candidates)
+        # If we found kWh, this is definitely electric
+        if result["service_type"] not in ("electric", "combined"):
+            result["service_type"] = "electric"
+            print(f"[regex_extract] Found kWh - upgrading service_type to 'electric'")
+        print(f"[regex_extract] total_kwh: {result['total_kwh']} (from {kwh_source}, {len(kwh_candidates)} candidates)")
+    
+    # ========== TOTAL AMOUNT (Multi-Location Validation) ==========
+    # SCE bills show charges in MULTIPLE locations. We extract from ALL and cross-validate.
+    # IMPORTANT: "Your new charges" is the CURRENT PERIOD, "Amount due" may include past due.
     #
-    # IMPORTANT: We want the CURRENT PERIOD CHARGES, not total owed (which includes past due)
-    # Prioritize "Your new charges" over "Amount due"
-    amount_patterns = [
-        # ===== SCE NEW CHARGES (HIGHEST PRIORITY) =====
-        # SCE: "Your new charges $37,225.88" - THE ACTUAL BILL FOR THIS PERIOD
-        r"Your\s+new\s+charges\s+\$\s*([\d,]+\.\d{2})",
-        r"Your\s+new\s+charges[:\s]*\$?\s*([\d,]+\.\d{2})",
-        r"(?:Total\s*)?[Nn]ew\s+[Cc]harges[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # SCE: "Total" line on page 3 summary (e.g., "$37,225.88 Total")
-        r"\$([\d,]+\.\d{2})\s+Total\s*$",
+    # Confidence scores reflect reliability:
+    # - "Your new charges" = highest confidence (current period only)
+    # - "Total current charges" = high confidence
+    # - "Amount due" = lower confidence (may include past due)
+    amount_patterns_with_confidence = [
+        # ===== SCE NEW CHARGES (HIGHEST CONFIDENCE - current period only) =====
+        (r"Your\s+new\s+charges\s+\$\s*([\d,]+\.\d{2})", "sce_new_charges_exact", 1.0),
+        (r"Your\s+new\s+charges[:\s]*\$?\s*([\d,]+\.\d{2})", "sce_new_charges", 0.98),
+        (r"(?:Total\s*)?[Nn]ew\s+[Cc]harges[:\s]*\$?\s*([\d,]+\.\d{2})", "new_charges_generic", 0.95),
         
-        # ===== LADWP =====
-        # LADWP: "Total Amount Due $ 22,462.77" (LADWP doesn't usually have past due issue)
-        r"Total\s*Amount\s*Due\s*\$\s*([\d,]+\.\d{2})",
+        # ===== EXPLICIT CURRENT PERIOD (HIGH CONFIDENCE) =====
+        (r"(?:Total\s*)?Current\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "current_charges", 0.92),
+        (r"This\s*Month(?:'s)?\s*Charges?[:\s]*\$?\s*([\d,]+\.\d{2})", "this_month_charges", 0.90),
+        (r"Total\s*Electric\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "total_electric_charges", 0.90),
+        (r"Total\s*Gas\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "total_gas_charges", 0.90),
+        (r"\$([\d,]+\.\d{2})\s+Total\s*$", "dollar_total_suffix", 0.88),
         
-        # ===== GENERIC CURRENT CHARGES =====
-        # Current Charges / This Month Charges
-        r"(?:Total\s*)?Current\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
-        r"This\s*Month(?:'s)?\s*Charges?[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # Total Electric/Gas Charges (usually current period)
-        r"Total\s*Electric\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
-        r"Total\s*Gas\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # ===== LADWP (HIGH CONFIDENCE - usually doesn't have past due issue) =====
+        (r"Total\s*Amount\s*Due\s*\$\s*([\d,]+\.\d{2})", "ladwp_total_due", 0.92),
         
-        # ===== FALLBACK: AMOUNT DUE (may include past due) =====
-        # Only use these if we didn't find "new charges" above
-        # SCE: "Amount due $37,225.88" - exact format from bill page 1
-        r"Amount\s+due\s+\$\s*([\d,]+\.\d{2})",
-        r"Amount\s+due\s*\$?([\d,]+\.\d{2})",
-        # SCE: "Total amount you owe by 09/08/25 $37,225.88"
-        r"Total\s+amount\s+you\s+owe\s+by\s+\d{1,2}/\d{1,2}/\d{2,4}\s+\$?\s*([\d,]+\.\d{2})",
-        r"Total\s+amount\s+you\s+owe[\s\S]{0,30}?\$\s*([\d,]+\.\d{2})",
-        # Total Amount You Owe (case insensitive)
-        r"Total\s*Amount\s*You\s*Owe[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # Total Due/Owed/Charges
-        r"Total\s*(?:Due|Owed)[:\s]*\$?\s*([\d,]+\.\d{2})",
-        r"Total\s*Amount\s*(?:Owed|Payable)[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # Amount Due (various formats)
-        r"(?:Total\s*)?Amount\s*Due[:\s]*\$?\s*([\d,]+\.\d{2})",
-        r"Amount\s*(?:Now\s*)?Due[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # Please Pay / Pay This Amount
-        r"(?:Please\s*)?Pay\s*(?:This\s*)?Amount[:\s]*\$?\s*([\d,]+\.\d{2})",
-        r"Amount\s*(?:To\s*)?Pay[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # Balance Due
-        r"(?:Total\s*)?Balance\s*Due[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # Your Bill / This Bill
-        r"(?:Your|This)\s*Bill[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # Pay Online amount
-        r"Pay\s*Online[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # Total Bill
-        r"Total\s*Bill[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # Statement Balance
-        r"Statement\s*Balance[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # Generic $ amount after "total" or "due"
-        r"(?:total|due)[:\s]*\$\s*([\d,]+\.\d{2})",
+        # ===== AMOUNT DUE PATTERNS (MEDIUM CONFIDENCE - may include past due) =====
+        (r"Amount\s+due\s+\$\s*([\d,]+\.\d{2})", "amount_due_exact", 0.70),
+        (r"Amount\s+due\s*\$?([\d,]+\.\d{2})", "amount_due", 0.68),
+        (r"Total\s+amount\s+you\s+owe\s+by\s+\d{1,2}/\d{1,2}/\d{2,4}\s+\$?\s*([\d,]+\.\d{2})", "total_owe_by_date", 0.65),
+        (r"Total\s+amount\s+you\s+owe[\s\S]{0,30}?\$\s*([\d,]+\.\d{2})", "total_owe", 0.62),
+        (r"Total\s*Amount\s*You\s*Owe[:\s]*\$?\s*([\d,]+\.\d{2})", "total_amount_owe", 0.60),
+        
+        # ===== GENERIC TOTAL/DUE (LOWER CONFIDENCE) =====
+        (r"Total\s*(?:Due|Owed)[:\s]*\$?\s*([\d,]+\.\d{2})", "total_due", 0.55),
+        (r"(?:Total\s*)?Amount\s*Due[:\s]*\$?\s*([\d,]+\.\d{2})", "amount_due_generic", 0.52),
+        (r"(?:Total\s*)?Balance\s*Due[:\s]*\$?\s*([\d,]+\.\d{2})", "balance_due", 0.50),
+        (r"(?:Your|This)\s*Bill[:\s]*\$?\s*([\d,]+\.\d{2})", "your_bill", 0.48),
+        (r"Total\s*Bill[:\s]*\$?\s*([\d,]+\.\d{2})", "total_bill", 0.48),
+        (r"Statement\s*Balance[:\s]*\$?\s*([\d,]+\.\d{2})", "statement_balance", 0.45),
+        (r"(?:total|due)[:\s]*\$\s*([\d,]+\.\d{2})", "generic_total_due", 0.40),
     ]
-    for pattern in amount_patterns:
-        match = re.search(pattern, raw_text, re.IGNORECASE)
-        if match:
-            try:
-                amt_str = match.group(1).replace(",", "")
-                amt_val = float(amt_str)
-                # Sanity check - amount should be reasonable
-                if amt_val > 0 and amt_val < 10000000:
-                    result["total_amount"] = amt_val
-                    print(f"[regex_extract] total_amount: {result['total_amount']}")
-                    break
-            except (ValueError, TypeError):
-                pass
+    
+    # Use multi-location validation to get the best amount value
+    amount_value, amount_source, amount_candidates = extract_with_multi_location_validation(
+        raw_text, amount_patterns_with_confidence, "Amount", tolerance_pct=0.02  # 2% tolerance
+    )
+    
+    if amount_value and amount_value > 0 and amount_value < 10000000:
+        result["total_amount"] = amount_value
+        result["_amount_source"] = amount_source
+        result["_amount_candidates_count"] = len(amount_candidates)
+        print(f"[regex_extract] total_amount: {result['total_amount']} (from {amount_source}, {len(amount_candidates)} candidates)")
     
     # IMPORTANT: Add late payment charge if present (for accurate total)
     # SCE format: "Late payment charge $150.22" or "Late payment charge $247.29"
@@ -1464,14 +1483,33 @@ def regex_extract_all_fields(raw_text):
             if cost_diff_pct > 30:
                 print(f"[regex_extract] WARNING: TOU cost sum ${tou_cost_sum:.2f} differs from total ${result['total_amount']:.2f} by {cost_diff_pct:.1f}% - possible OCR error")
         
-        # Check if current total_kwh looks wrong:
-        # - Missing
-        # - Suspiciously close to a single TOU period (within 5%)
-        # - Much smaller than the TOU sum (probably grabbed wrong value)
+        # SMART CROSS-VALIDATION between multi-location extraction and TOU sum
+        # 
+        # Key insight: Both can have OCR errors!
+        # - Multi-location: If 2+ sources agreed, high confidence
+        # - TOU sum: Individual period values can have OCR errors, compounding the total
+        #
+        # Strategy:
+        # 1. If multi-location found multiple agreeing candidates (high confidence), trust it
+        # 2. If TOU sum is significantly different, log warning but don't override validated value
+        # 3. Only use TOU sum if no multi-location value or it looks like a single TOU period
+        
+        multi_location_validated = result.get("_kwh_candidates_count", 0) >= 2
         needs_tou_sum = False
+        
         if current_total_kwh is None:
             needs_tou_sum = True
             print(f"[regex_extract] total_kwh is None, will use TOU sum")
+        elif multi_location_validated:
+            # Multi-location found multiple candidates - high confidence
+            # Compare with TOU sum for validation, but trust multi-location
+            if tou_kwh_sum > 0:
+                diff_pct = abs(current_total_kwh - tou_kwh_sum) / current_total_kwh * 100
+                if diff_pct > 10:
+                    print(f"[regex_extract] NOTE: Multi-location kWh ({current_total_kwh:,.0f}) differs from TOU sum ({tou_kwh_sum:,.0f}) by {diff_pct:.1f}%")
+                    print(f"[regex_extract] KEEPING multi-location value (multiple sources agreed)")
+                else:
+                    print(f"[regex_extract] VALIDATED: Multi-location kWh ({current_total_kwh:,.0f}) confirmed by TOU sum ({tou_kwh_sum:,.0f})")
         elif tou_kwh_sum > 0 and current_total_kwh < tou_kwh_sum * 0.5:
             # Current value is less than half the TOU sum - probably wrong
             needs_tou_sum = True
@@ -1487,6 +1525,7 @@ def regex_extract_all_fields(raw_text):
         
         if needs_tou_sum and tou_kwh_sum > 0:
             result["total_kwh"] = tou_kwh_sum
+            result["_kwh_source"] = "tou_sum"
             print(f"[regex_extract] CORRECTED total_kwh from TOU sum: {tou_kwh_sum}")
     
     # ========== DETERMINE SUCCESS ==========
