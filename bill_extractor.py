@@ -628,6 +628,9 @@ def extract_with_multi_location_validation(raw_text, patterns_with_confidence, f
     Extract a value from MULTIPLE locations and cross-validate using voting.
     This catches OCR errors when one location is garbled but another is clear.
     
+    IMPORTANT: Agreement only counts if at least one source has confidence >= 0.7
+    This prevents low-confidence matches from outvoting a single high-confidence match.
+    
     Args:
         raw_text: The OCR'd text to search
         patterns_with_confidence: List of tuples (regex_pattern, source_name, confidence_score)
@@ -638,6 +641,8 @@ def extract_with_multi_location_validation(raw_text, patterns_with_confidence, f
         (best_value, source_name, all_candidates) or (None, None, [])
     """
     import re
+    
+    MIN_CONFIDENCE_FOR_AGREEMENT = 0.7  # At least one agreeing match must have this confidence
     
     candidates = []
     
@@ -663,31 +668,61 @@ def extract_with_multi_location_validation(raw_text, patterns_with_confidence, f
     if not candidates:
         return None, None, []
     
-    # Log all candidates found
+    # Sort by confidence DESC for logging
+    candidates_sorted = sorted(candidates, key=lambda x: x["confidence"], reverse=True)
+    
+    # Log all candidates found (sorted by confidence)
     print(f"[multi-location] {field_name}: Found {len(candidates)} candidates:")
-    for c in candidates[:10]:  # Show first 10
+    for c in candidates_sorted[:12]:  # Show top 12
         print(f"[multi-location]   - {c['value']:,.2f} from '{c['source']}' (conf: {c['confidence']:.2f})")
     
     # VOTING: Group similar values (within tolerance)
-    # If 2+ sources agree, that's high confidence
+    # CRITICAL: Only accept agreement if at least one match has high confidence (>=0.7)
+    # This prevents low-confidence TOU periods from outvoting the correct total
+    valid_agreements = []
+    
     if len(candidates) >= 2:
-        for i, c1 in enumerate(candidates):
+        checked_values = set()  # Avoid checking same value cluster multiple times
+        
+        for i, c1 in enumerate(candidates_sorted):
+            # Skip if we already found agreement for a similar value
+            value_key = round(c1["value"] / 1000)  # Group by thousands
+            if value_key in checked_values:
+                continue
+            checked_values.add(value_key)
+            
             agreeing = [c1]
-            for j, c2 in enumerate(candidates):
+            for j, c2 in enumerate(candidates_sorted):
                 if i != j:
                     # Check if values are within tolerance
                     if c1["value"] > 0 and abs(c1["value"] - c2["value"]) / c1["value"] <= tolerance_pct:
                         agreeing.append(c2)
             
             if len(agreeing) >= 2:
-                # Multiple sources agree - use highest confidence among them
-                best = max(agreeing, key=lambda x: x["confidence"])
-                print(f"[multi-location] {field_name}: VALIDATED! {len(agreeing)} sources agree on {best['value']:,.2f}")
-                return best["value"], best["source"], candidates
+                # Check if at least one agreeing source has high confidence
+                max_conf_in_agreement = max(a["confidence"] for a in agreeing)
+                if max_conf_in_agreement >= MIN_CONFIDENCE_FOR_AGREEMENT:
+                    best_in_group = max(agreeing, key=lambda x: x["confidence"])
+                    valid_agreements.append({
+                        "value": best_in_group["value"],
+                        "source": best_in_group["source"],
+                        "confidence": best_in_group["confidence"],
+                        "agreement_count": len(agreeing),
+                        "max_agreement_conf": max_conf_in_agreement
+                    })
     
-    # No agreement - use highest confidence single source
-    best = max(candidates, key=lambda x: x["confidence"])
-    print(f"[multi-location] {field_name}: Using single best source: {best['value']:,.2f} from '{best['source']}'")
+    # If we have valid high-confidence agreements, use the best one
+    if valid_agreements:
+        # Sort by: confidence first, then agreement count
+        valid_agreements.sort(key=lambda x: (x["confidence"], x["agreement_count"]), reverse=True)
+        best = valid_agreements[0]
+        print(f"[multi-location] {field_name}: VALIDATED! {best['agreement_count']} sources agree on {best['value']:,.2f} (max conf: {best['max_agreement_conf']:.2f})")
+        return best["value"], best["source"], candidates
+    
+    # No valid high-confidence agreement - use the single highest confidence source
+    # This is the SAFE fallback - trust the most confident pattern
+    best = candidates_sorted[0]
+    print(f"[multi-location] {field_name}: No valid agreement. Using highest confidence: {best['value']:,.2f} from '{best['source']}' (conf: {best['confidence']:.2f})")
     return best["value"], best["source"], candidates
 
 
