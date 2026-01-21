@@ -61,6 +61,15 @@ if [[ -f "$ROOT_DIR/.env" ]]; then
   set +a
 fi
 
+# Load local.env AFTER .env so local overrides take precedence
+if [[ -f "$ROOT_DIR/local.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/local.env"
+  set +a
+  echo "[start] Loaded local.env overrides"
+fi
+
 if [[ -f "$ROOT_DIR/requirements.txt" ]]; then
   echo "[start] Ensuring dependencies are installed..."
   "$VENV_PY" -m pip install --upgrade pip >/dev/null 2>&1 || true

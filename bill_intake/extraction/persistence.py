@@ -63,6 +63,7 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
 
     try:
         from bill_intake.utils.normalization import normalize_utility_name
+        from bill_intake.db.meters import find_account_by_meter_in_project
         from bills_db import (
             delete_bills_for_file,
             insert_bill,
@@ -94,7 +95,34 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
             account_number = "Unknown"
             print(f"[bill_extractor] Using default account 'Unknown' for file")
 
-        account_id = upsert_utility_account(project_id, utility_name, account_number)
+        # KEY LOGIC: A meter can only belong to ONE account.
+        # Check if the meter already exists in this project - if so, use that account
+        # regardless of account number (prevents OCR errors from creating duplicate accounts)
+        meters = extracted_data.get("meters", [])
+        existing_account_id = None
+        existing_meter_id = None
+        
+        # First check top-level meter_number (regex extraction puts it here)
+        top_level_meter = get_val("meter_number", "meter_id")
+        if top_level_meter and top_level_meter != "Unknown":
+            existing_account_id, existing_meter_id = find_account_by_meter_in_project(project_id, top_level_meter)
+            if existing_account_id:
+                print(f"[bill_extractor] METER-BASED ACCOUNT MATCH: Meter '{top_level_meter}' already exists - using account {existing_account_id}")
+        
+        # Also check meters array (vision extraction puts it here)
+        if not existing_account_id:
+            for meter_data in meters:
+                meter_number = meter_data.get("meter_number") or meter_data.get("meter_id")
+                if meter_number and meter_number != "Unknown":
+                    existing_account_id, existing_meter_id = find_account_by_meter_in_project(project_id, meter_number)
+                    if existing_account_id:
+                        print(f"[bill_extractor] METER-BASED ACCOUNT MATCH: Meter '{meter_number}' already exists - using account {existing_account_id}")
+                        break
+        
+        if existing_account_id:
+            account_id = existing_account_id
+        else:
+            account_id = upsert_utility_account(project_id, utility_name, account_number)
 
         meters = extracted_data.get("meters", [])
         service_address = get_val("service_address", "")
@@ -396,7 +424,13 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
             for meter_data in meters:
                 meter_number = meter_data.get("meter_number") or meter_data.get("meter_id", "Unknown")
                 meter_service_address = meter_data.get("service_address") or service_address
-                meter_id = upsert_utility_meter(account_id, meter_number, meter_service_address)
+                
+                # If we already found this meter exists in the project, use that meter_id
+                if existing_meter_id and meter_number == (meters[0].get("meter_number") or meters[0].get("meter_id")):
+                    meter_id = existing_meter_id
+                    print(f"[bill_extractor] Using existing meter_id={meter_id} for '{meter_number}'")
+                else:
+                    meter_id = upsert_utility_meter(account_id, meter_number, meter_service_address)
 
                 m_kwh = clean_numeric(meter_data.get("kwh_total"))
                 m_amount = clean_numeric(meter_data.get("total_charge"))
@@ -485,7 +519,13 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
         else:
             # Use extracted meter_number if available, otherwise default to "Primary"
             extracted_meter_num = get_val("meter_number", "meter_id") or "Primary"
-            meter_id = upsert_utility_meter(account_id, extracted_meter_num, service_address)
+            
+            # If we already found this meter exists, use that meter_id
+            if existing_meter_id and extracted_meter_num == top_level_meter:
+                meter_id = existing_meter_id
+                print(f"[bill_extractor] Using existing meter_id={meter_id} for '{extracted_meter_num}'")
+            else:
+                meter_id = upsert_utility_meter(account_id, extracted_meter_num, service_address)
             bill_id = insert_bill(
                 bill_file_id=file_id,
                 account_id=account_id,

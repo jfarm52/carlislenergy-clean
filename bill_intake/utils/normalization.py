@@ -26,19 +26,24 @@ def normalize_account_number(raw):
 
 
 def normalize_meter_number(raw):
-    """Strip spaces, punctuation; return digits only. Handle special cases."""
+    """
+    Normalize meter number while preserving original format.
+    
+    Keeps letters, numbers, and dashes (e.g., "V349N-002081" stays as-is).
+    Only strips spaces and other punctuation for consistency.
+    """
     if not raw:
         return "Unknown"
     raw_str = str(raw).strip()
     # Keep placeholder values as-is
     if raw_str.upper() in ("UNKNOWN", "N/A", "NA", "NONE", "PRIMARY", ""):
         return "Unknown"
-    # Extract digits only
-    digits = re.sub(r"[^0-9]", "", raw_str)
-    # If no digits found, return "Unknown"
-    if not digits:
+    # Keep alphanumeric characters and dashes, uppercase for consistency
+    normalized = re.sub(r"[^A-Za-z0-9\-]", "", raw_str).upper()
+    # If nothing left, return "Unknown"
+    if not normalized:
         return "Unknown"
-    return digits
+    return normalized
 
 
 def normalize_utility_name(raw: str | None) -> str:

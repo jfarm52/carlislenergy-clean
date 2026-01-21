@@ -309,10 +309,10 @@ SCE-SPECIFIC INSTRUCTIONS:
    - DO NOT use "Rotating outage Group" or POD-ID as account numbers - those are NOT account numbers!
    - The account number should be a pure numeric string (8-12 digits), not text like "Rotating"
 3. AMOUNT DUE - CRITICAL:
-   - Use "Amount due $XX,XXX.XX" shown prominently on page 1 (usually top right)
-   - Or use "Total amount you owe by [date] $XX,XXX.XX"
-   - DO NOT use "Your new charges" - that's only new charges, not the total owed!
-   - The amount_due should be the TOTAL amount owed, including any previous balance + late fees
+   - PREFER "Your new charges $XX,XXX.XX" - this is the ACTUAL BILL for THIS billing period
+   - "Amount due" or "Total amount you owe" may include PAST DUE amounts + late fees - NOT ideal
+   - The amount_due should be the NEW CHARGES for this billing period only
+   - If "Your new charges" is not visible, fall back to "Amount due"
 4. DUE DATE - CRITICAL:
    - SCE shows "Due by MM/DD/YY" right below or next to "Amount due" on page 1
    - Extract this as YYYY-MM-DD format
@@ -1099,13 +1099,17 @@ def regex_extract_all_fields(raw_text):
     kwh_patterns = [
         # ===== SCE SPECIFIC (HIGHEST PRIORITY) =====
         # SCE Page 3: "Total electricity you used this month in kWh    160,474"
+        # Use flexible pattern to handle OCR garbling
         r"Total\s+electricity\s+you\s+used\s+this\s+month\s+in\s+kWh\s+([\d,]+)",
-        # SCE: "Total electricity you used this month in kWh" with number anywhere after
-        r"Total\s+electricity\s+you\s+used[\s\S]{0,30}?([\d,]{4,})",
-        # SCE: usage summary total line - "160474 kWh" standalone on page 3
-        r"^\s*([\d,]{4,})\s*kWh\s*$",
-        # SCE table: "On peak [bar] 25246 kWh"
-        r"(?:On|Off|Mid)\s*peak\s*[\s\S]{0,50}?([\d,]+)\s*kWh",
+        r"Total\s+electricity\s+you\s+used[\s\S]{0,50}?in\s*kWh\s+([\d,]+)",
+        r"Total\s+electricity[\s\S]{0,30}?this\s+month[\s\S]{0,30}?([\d,]{5,})",
+        # SCE: "Total electricity you used this month in kWh" followed by number on next line
+        r"Total\s+electricity\s+you\s+used[\s\S]{0,50}?([\d,]{5,})",
+        # SCE summary table: look for the LARGEST kWh after TOU periods (that's the total)
+        # Pattern: On/Mid/Off peak rows followed by a total line showing XXX,XXX kWh
+        r"(?:On|Off|Mid|Super)[^\n]*kWh[^\n]*\n(?:[^\n]*kWh[^\n]*\n){1,5}\s*([\d,]{5,})\s*kWh",
+        # SCE: "XXX,XXX kWh" followed by "Energy Charges" (the total line above charges)
+        r"([\d,]{5,})\s*kWh\s*\$?[\d,]+(?:\.\d+)?\s*Energy\s*Charges",
         
         # ===== LADWP SPECIFIC =====
         # LADWP: "Electric Charges 10/24/25 - 11/26/25 81,920 kWh"
@@ -1113,7 +1117,7 @@ def regex_extract_all_fields(raw_text):
         # LADWP: "Total kWh Consumption"
         r"Total\s*kWh\s*Consumption[^\d]*([\d,]+(?:\.\d+)?)",
         
-        # ===== GENERIC PATTERNS =====
+        # ===== GENERIC TOTAL PATTERNS =====
         # Total Usage/kWh/Energy
         r"Total\s*(?:Usage|kWh|Energy)[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
         r"Total\s*(?:Usage|kWh|Energy)[:\s]*([\d,]+(?:\.\d+)?)\s*(?:kilowatt)",
@@ -1121,33 +1125,39 @@ def regex_extract_all_fields(raw_text):
         r"([\d,]+(?:\.\d+)?)\s*kWh\s*Total",
         # Total kWh:
         r"Total\s*kWh[:\s]*([\d,]+(?:\.\d+)?)",
-        # Usage: X kWh
-        r"Usage[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-        # kWh Used
-        r"kWh\s*Used[:\s]*([\d,]+(?:\.\d+)?)",
-        # Energy Charges ... X kWh
-        r"Energy\s*Charges.*?([\d,]+(?:\.\d+)?)\s*kWh",
-        # Your usage this month
-        r"Your\s*[Uu]sage\s*(?:this\s*month)?[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-        r"Billed\s*kWh[:\s]*([\d,]+(?:\.\d+)?)",
-        r"Total\s*Billed\s*kWh[:\s]*([\d,]+(?:\.\d+)?)",
-        r"kWh\s*Billed[:\s]*([\d,]+(?:\.\d+)?)",
-        # Table formats
-        r"Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-        r"Generation[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-        # Meter Reading shows kWh
-        r"Meter\s*Reading.*?([\d,]+(?:\.\d+)?)\s*kWh",
         # Total Consumption
         r"Total\s*Consumption[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
         # Electricity Used
         r"Electricity\s*Used[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        # Total Billed kWh
+        r"Total\s*Billed\s*kWh[:\s]*([\d,]+(?:\.\d+)?)",
+        # Your usage this month
+        r"Your\s*[Uu]sage\s*(?:this\s*month)?[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        r"Billed\s*kWh[:\s]*([\d,]+(?:\.\d+)?)",
+        r"kWh\s*Billed[:\s]*([\d,]+(?:\.\d+)?)",
+        # Usage: X kWh
+        r"Usage[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        # kWh Used
+        r"kWh\s*Used[:\s]*([\d,]+(?:\.\d+)?)",
         # kWh Delivered
         r"kWh\s*Delivered[:\s]*([\d,]+(?:\.\d+)?)",
         # Electric Delivery
         r"Electric\s*Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        # Energy Charges ... X kWh (but NOT individual TOU periods)
+        r"Energy\s*Charges[\s\S]{0,20}?([\d,]{5,})\s*kWh",
+        # Table formats - usually totals
+        r"Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        r"Generation[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
+        # Meter Reading shows kWh (but careful - may be partial)
+        r"Meter\s*Reading.*?Total.*?([\d,]+(?:\.\d+)?)\s*kWh",
         # X kWh near "usage" or "used"
-        r"[Uu](?:sage|sed)[:\s]*([\d,]+(?:\.\d+)?)\s*kWh",
-        # Standalone large number + kWh (last resort)
+        r"[Uu](?:sage|sed)[:\s]*([\d,]{5,})\s*kWh",
+        
+        # ===== LOW PRIORITY - MAY CATCH TOU PERIODS =====
+        # SCE table: "On peak [bar] 25246 kWh" - ONLY USE IF NOTHING ELSE MATCHED
+        # NOTE: This may catch individual TOU period, not total!
+        r"(?:On|Off|Mid|Super)\s*(?:off\s*)?peak\s*[\s\S]{0,50}?([\d,]+)\s*kWh",
+        # Standalone large number + kWh (last resort - may be partial)
         r"\b([\d,]{4,})\s*kWh\b",
     ]
     for pattern in kwh_patterns:
@@ -1170,32 +1180,46 @@ def regex_extract_all_fields(raw_text):
     
     # ========== TOTAL AMOUNT ==========
     # SCE FORMAT OBSERVED:
-    #   Page 1: "Amount due $37,225.88" (top right, prominent)
-    #   Page 1: "Total amount you owe by 09/08/25   $37,225.88"
+    #   Page 1: "Your new charges $37,225.88" - THIS IS THE ACTUAL BILL FOR THIS PERIOD
+    #   Page 1: "Amount due $78,352.71" - includes past due amounts + late fees (NOT what we want!)
     #
-    # IMPORTANT: Prioritize "Total amount you owe" and "Amount due" over "New charges"
+    # IMPORTANT: We want the CURRENT PERIOD CHARGES, not total owed (which includes past due)
+    # Prioritize "Your new charges" over "Amount due"
     amount_patterns = [
-        # ===== SCE SPECIFIC (HIGHEST PRIORITY) =====
+        # ===== SCE NEW CHARGES (HIGHEST PRIORITY) =====
+        # SCE: "Your new charges $37,225.88" - THE ACTUAL BILL FOR THIS PERIOD
+        r"Your\s+new\s+charges\s+\$\s*([\d,]+\.\d{2})",
+        r"Your\s+new\s+charges[:\s]*\$?\s*([\d,]+\.\d{2})",
+        r"(?:Total\s*)?[Nn]ew\s+[Cc]harges[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # SCE: "Total" line on page 3 summary (e.g., "$37,225.88 Total")
+        r"\$([\d,]+\.\d{2})\s+Total\s*$",
+        
+        # ===== LADWP =====
+        # LADWP: "Total Amount Due $ 22,462.77" (LADWP doesn't usually have past due issue)
+        r"Total\s*Amount\s*Due\s*\$\s*([\d,]+\.\d{2})",
+        
+        # ===== GENERIC CURRENT CHARGES =====
+        # Current Charges / This Month Charges
+        r"(?:Total\s*)?Current\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
+        r"This\s*Month(?:'s)?\s*Charges?[:\s]*\$?\s*([\d,]+\.\d{2})",
+        # Total Electric/Gas Charges (usually current period)
+        r"Total\s*Electric\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
+        r"Total\s*Gas\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
+        
+        # ===== FALLBACK: AMOUNT DUE (may include past due) =====
+        # Only use these if we didn't find "new charges" above
         # SCE: "Amount due $37,225.88" - exact format from bill page 1
         r"Amount\s+due\s+\$\s*([\d,]+\.\d{2})",
         r"Amount\s+due\s*\$?([\d,]+\.\d{2})",
         # SCE: "Total amount you owe by 09/08/25 $37,225.88"
         r"Total\s+amount\s+you\s+owe\s+by\s+\d{1,2}/\d{1,2}/\d{2,4}\s+\$?\s*([\d,]+\.\d{2})",
         r"Total\s+amount\s+you\s+owe[\s\S]{0,30}?\$\s*([\d,]+\.\d{2})",
-        # SCE: Big prominent "Amount due" with $ amount 
-        r"Amount\s*due[:\s]*\$\s*([\d,]+\.\d{2})",
-        
-        # ===== LADWP =====
-        # LADWP: "Total Amount Due $ 22,462.77"
-        r"Total\s*Amount\s*Due\s*\$\s*([\d,]+\.\d{2})",
-        
-        # ===== GENERIC PATTERNS =====
         # Total Amount You Owe (case insensitive)
         r"Total\s*Amount\s*You\s*Owe[:\s]*\$?\s*([\d,]+\.\d{2})",
         # Total Due/Owed/Charges
         r"Total\s*(?:Due|Owed)[:\s]*\$?\s*([\d,]+\.\d{2})",
         r"Total\s*Amount\s*(?:Owed|Payable)[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # Amount Due (various formats) - but NOT "new charges"
+        # Amount Due (various formats)
         r"(?:Total\s*)?Amount\s*Due[:\s]*\$?\s*([\d,]+\.\d{2})",
         r"Amount\s*(?:Now\s*)?Due[:\s]*\$?\s*([\d,]+\.\d{2})",
         # Please Pay / Pay This Amount
@@ -1203,9 +1227,6 @@ def regex_extract_all_fields(raw_text):
         r"Amount\s*(?:To\s*)?Pay[:\s]*\$?\s*([\d,]+\.\d{2})",
         # Balance Due
         r"(?:Total\s*)?Balance\s*Due[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # Total Electric/Gas Charges
-        r"Total\s*Electric\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
-        r"Total\s*Gas\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
         # Your Bill / This Bill
         r"(?:Your|This)\s*Bill[:\s]*\$?\s*([\d,]+\.\d{2})",
         # Pay Online amount
@@ -1214,11 +1235,6 @@ def regex_extract_all_fields(raw_text):
         r"Total\s*Bill[:\s]*\$?\s*([\d,]+\.\d{2})",
         # Statement Balance
         r"Statement\s*Balance[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # Current Charges (lower priority)
-        r"(?:Total\s*)?Current\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
-        # New Charges (LOWEST PRIORITY - not the total owed!)
-        r"Your\s+new\s+charges[:\s]*\$?\s*([\d,]+\.\d{2})",
-        r"(?:Total\s*)?New\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})",
         # Generic $ amount after "total" or "due"
         r"(?:total|due)[:\s]*\$\s*([\d,]+\.\d{2})",
     ]
@@ -1235,6 +1251,26 @@ def regex_extract_all_fields(raw_text):
                     break
             except (ValueError, TypeError):
                 pass
+    
+    # IMPORTANT: Add late payment charge if present (for accurate total)
+    # SCE format: "Late payment charge $150.22" or "Late payment charge $247.29"
+    if result.get("total_amount"):
+        late_fee_patterns = [
+            r"Late\s+payment\s+charge\s+\$?([\d,]+\.\d{2})",
+            r"Late\s+fee\s+\$?([\d,]+\.\d{2})",
+            r"Late\s+charge\s+\$?([\d,]+\.\d{2})",
+        ]
+        for pattern in late_fee_patterns:
+            match = re.search(pattern, raw_text, re.IGNORECASE)
+            if match:
+                try:
+                    late_fee = float(match.group(1).replace(",", ""))
+                    if late_fee > 0 and late_fee < 1000:  # Reasonable late fee range
+                        result["total_amount"] += late_fee
+                        print(f"[regex_extract] Added late payment charge ${late_fee} -> total_amount: {result['total_amount']}")
+                        break
+                except (ValueError, TypeError):
+                    pass
     
     # ========== METER NUMBER ==========
     # SCE FORMAT OBSERVED:
@@ -1391,6 +1427,36 @@ def regex_extract_all_fields(raw_text):
             result["service_type"] = "electric"
             print(f"[regex_extract] Found TOU data - upgrading service_type to 'electric'")
         print(f"[regex_extract] tou_breakdown: {len(tou_data)} periods")
+        
+        # SMART FIX: If total_kwh wasn't found or looks like a TOU period value,
+        # calculate it by summing the TOU periods (this is more reliable than pattern matching)
+        tou_kwh_sum = sum(entry.get("kwh", 0) for entry in tou_data if entry.get("kwh"))
+        current_total_kwh = result.get("total_kwh")
+        
+        # Check if current total_kwh looks wrong:
+        # - Missing
+        # - Suspiciously close to a single TOU period (within 5%)
+        # - Much smaller than the TOU sum (probably grabbed wrong value)
+        needs_tou_sum = False
+        if current_total_kwh is None:
+            needs_tou_sum = True
+            print(f"[regex_extract] total_kwh is None, will use TOU sum")
+        elif tou_kwh_sum > 0 and current_total_kwh < tou_kwh_sum * 0.5:
+            # Current value is less than half the TOU sum - probably wrong
+            needs_tou_sum = True
+            print(f"[regex_extract] total_kwh {current_total_kwh} is < 50% of TOU sum {tou_kwh_sum}, will use TOU sum")
+        elif len(tou_data) >= 2:
+            # Check if current_total_kwh matches any single TOU period closely (±5%)
+            for entry in tou_data:
+                entry_kwh = entry.get("kwh", 0)
+                if entry_kwh > 0 and 0.95 <= current_total_kwh / entry_kwh <= 1.05:
+                    needs_tou_sum = True
+                    print(f"[regex_extract] total_kwh {current_total_kwh} matches TOU period {entry_kwh}, will use TOU sum instead")
+                    break
+        
+        if needs_tou_sum and tou_kwh_sum > 0:
+            result["total_kwh"] = tou_kwh_sum
+            print(f"[regex_extract] CORRECTED total_kwh from TOU sum: {tou_kwh_sum}")
     
     # ========== DETERMINE SUCCESS ==========
     # For non-electric: success if we got utility + account + amount

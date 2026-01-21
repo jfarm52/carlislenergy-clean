@@ -79,12 +79,13 @@ class JobQueue:
         JobState.FAILED: 1.0,
     }
     
-    def __init__(self, max_workers: int = 4):
+    def __init__(self, max_workers: int = 8):
         """
         Initialize the job queue.
         
         Args:
-            max_workers: Maximum concurrent processing threads
+            max_workers: Maximum concurrent processing threads (default 8)
+                        Higher = faster for local OCR, but may hit API rate limits
         """
         self.max_workers = max_workers
         self.executor = ThreadPoolExecutor(
@@ -324,7 +325,7 @@ _global_queue: Optional[JobQueue] = None
 _queue_lock = threading.Lock()
 
 
-def get_job_queue(max_workers: int = 4) -> JobQueue:
+def get_job_queue(max_workers: int = 8) -> JobQueue:
     """
     Get or create the global job queue singleton.
     

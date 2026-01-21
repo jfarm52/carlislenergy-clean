@@ -210,7 +210,12 @@ UTILITY-SPECIFIC EXTRACTION RULES:
 
 For SCE (Southern California Edison) bills:
 - utility_name: "Southern California Edison" or "SCE"
-- account_number: 10-12 digit number near top (common: ending in 4369 or 6457)
+- account_number: PREFER "Service account" field (10 digits like "8001053647").
+  If "Service account" is NOT visible, use "Customer account" instead.
+  DO NOT use "POD-ID" (17+ digit identifier starting with 101...).
+  The Service account is usually under "Service account" label on the left side.
+- meter_number: Use the EXACT meter number as shown on the bill (e.g., "V349N-002081").
+  Keep all letters, numbers, and dashes. DO NOT strip letters.
 - rate_schedule: SHORT CODE like "TOU-GS-2-E", "TOU-8-B" (5-15 chars max). Look in Electric Charges section. Long text is NOT rate schedule.
 - service_address: Complete address with street, city, state, ZIP
 - due_date: Payment due date in MM/DD/YYYY or text format
