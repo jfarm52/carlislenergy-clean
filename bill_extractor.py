@@ -840,6 +840,11 @@ def regex_extract_all_fields(raw_text):
         (r"(Imperial Irrigation District|IID)", "Imperial Irrigation District"),
         (r"(Riverside Public Utilities|RPU)", "Riverside Public Utilities"),
         (r"(Anaheim Public Utilities)", "Anaheim Public Utilities"),
+        (r"(City of Vernon|Vernon Public Utilities|Vernon Light (?:and|&) Power)", "City of Vernon"),
+        (r"(Azusa Light (?:and|&) Water)", "Azusa Light and Water"),
+        (r"(Colton Public Utilities)", "Colton Public Utilities"),
+        (r"(Corona Department of Water (?:and|&) Power)", "Corona Department of Water and Power"),
+        (r"(Rancho Cucamonga Municipal Utility)", "Rancho Cucamonga Municipal Utility"),
         # --- TEXAS ---
         (r"(TXU Energy|TXU)", "TXU Energy"),
         (r"(Reliant Energy|Reliant)", "Reliant Energy"),
@@ -1157,33 +1162,73 @@ def regex_extract_all_fields(raw_text):
                 break
     
     # ========== TOTAL KWH (Multi-Location Validation) ==========
-    # SCE bills show kWh in MULTIPLE locations. We extract from ALL and cross-validate.
-    # This catches OCR errors when one location is garbled but another is clear.
+    # UNIVERSAL extraction - works for SCE, PG&E, SDG&E, LADWP, Vernon, RPU, and others.
+    # Extract from ALL locations and cross-validate using voting.
     #
     # Confidence scores: 1.0 = most reliable (explicit "Total" label), 0.3 = fallback
     kwh_patterns_with_confidence = [
-        # ===== SCE EXPLICIT TOTAL (HIGHEST CONFIDENCE) =====
+        # ===== UNIVERSAL EXPLICIT "TOTAL" LABELS (HIGHEST CONFIDENCE) =====
+        # These patterns work across ALL utilities
+        (r"Total\s*kWh[:\s]*([\d,]+(?:\.\d+)?)", "total_kwh_label", 0.98),
+        (r"Total\s*(?:Usage|Energy)[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "total_usage_label", 0.96),
+        (r"([\d,]+(?:\.\d+)?)\s*kWh\s*Total", "kwh_total_suffix", 0.94),
+        (r"Total\s*Consumption[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "total_consumption", 0.94),
+        (r"Total\s*Billed\s*kWh[:\s]*([\d,]+(?:\.\d+)?)", "total_billed_kwh", 0.94),
+        (r"Total\s*Electric\s*(?:Usage|kWh)[:\s]*([\d,]+(?:\.\d+)?)", "total_electric_usage", 0.94),
+        (r"Electricity\s*Consumed[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "electricity_consumed", 0.92),
+        (r"Energy\s*Consumed[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "energy_consumed", 0.92),
+        
+        # ===== SCE SPECIFIC (HIGH CONFIDENCE) =====
         (r"Total\s+electricity\s+you\s+used\s+this\s+month\s+in\s+kWh\s+([\d,]+)", "sce_total_explicit", 1.0),
         (r"Total\s+electricity\s+you\s+used[\s\S]{0,50}?in\s*kWh\s+([\d,]+)", "sce_total_flexible", 0.95),
         (r"Total\s+electricity[\s\S]{0,30}?this\s+month[\s\S]{0,30}?([\d,]{5,})", "sce_total_nearby", 0.90),
         
-        # ===== EXPLICIT "TOTAL" LABELS (HIGH CONFIDENCE) =====
-        (r"Total\s*kWh[:\s]*([\d,]+(?:\.\d+)?)", "total_kwh_label", 0.95),
-        (r"Total\s*(?:Usage|Energy)[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "total_usage_label", 0.92),
-        (r"([\d,]+(?:\.\d+)?)\s*kWh\s*Total", "kwh_total_suffix", 0.90),
-        (r"Total\s*Consumption[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "total_consumption", 0.90),
-        (r"Total\s*Billed\s*kWh[:\s]*([\d,]+(?:\.\d+)?)", "total_billed_kwh", 0.90),
+        # ===== PG&E SPECIFIC (HIGH CONFIDENCE) =====
+        # PG&E: "Electric usage 1,234 kWh" or "Your electric use: 1,234 kWh"
+        (r"Electric\s+usage[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "pge_electric_usage", 0.95),
+        (r"Your\s+electric\s+use[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "pge_your_electric", 0.95),
+        (r"Total\s+Electric\s+Usage[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "pge_total_electric", 0.94),
+        # PG&E shows "kWh used" in usage summary
+        (r"kWh\s+used\s+this\s+period[:\s]*([\d,]+(?:\.\d+)?)", "pge_kwh_period", 0.93),
+        (r"Electric\s+Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "pge_delivery", 0.88),
+        
+        # ===== SDG&E SPECIFIC (HIGH CONFIDENCE) =====
+        # SDG&E: "Electric Usage 1,234 kWh" or "Total Electric 1,234 kWh"
+        (r"Electric\s+Usage[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "sdge_electric_usage", 0.95),
+        (r"Total\s+Electric[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "sdge_total_electric", 0.94),
+        (r"Energy\s+Usage\s+Summary[\s\S]{0,50}?([\d,]+(?:\.\d+)?)\s*kWh", "sdge_energy_summary", 0.92),
+        (r"Bundled\s+Usage[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "sdge_bundled", 0.88),
         
         # ===== LADWP SPECIFIC (HIGH CONFIDENCE) =====
         (r"Electric\s*Charges\s*\d{1,2}/\d{1,2}/\d{2,4}\s*[-–]\s*\d{1,2}/\d{1,2}/\d{2,4}\s*([\d,]+(?:\.\d+)?)\s*kWh", "ladwp_charges", 0.95),
         (r"Total\s*kWh\s*Consumption[^\d]*([\d,]+(?:\.\d+)?)", "ladwp_consumption", 0.92),
+        (r"(?:High|Low)\s*Peak\s*Subtotal[\s\S]{0,30}?([\d,]+(?:\.\d+)?)\s*kWh", "ladwp_peak_subtotal", 0.85),
+        
+        # ===== CITY OF VERNON SPECIFIC (HIGH CONFIDENCE) =====
+        # Vernon municipal bills - typically simpler format
+        (r"Electric\s*Service[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "vernon_electric_service", 0.94),
+        (r"Electricity[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "vernon_electricity", 0.92),
+        (r"kWh\s*Metered[:\s]*([\d,]+(?:\.\d+)?)", "vernon_metered", 0.90),
+        (r"Meter\s*Usage[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "vernon_meter_usage", 0.90),
+        
+        # ===== RPU (RIVERSIDE PUBLIC UTILITIES) SPECIFIC =====
+        (r"Electric\s*Usage[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "rpu_electric_usage", 0.94),
+        (r"Total\s*Kilowatt\s*Hours[:\s]*([\d,]+(?:\.\d+)?)", "rpu_kilowatt_hours", 0.94),
+        (r"kWh\s*This\s*Period[:\s]*([\d,]+(?:\.\d+)?)", "rpu_this_period", 0.92),
+        (r"Residential\s*Electric[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "rpu_residential", 0.90),
+        (r"Commercial\s*Electric[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "rpu_commercial", 0.90),
+        
+        # ===== METER READING PATTERNS (UNIVERSAL - HIGH CONFIDENCE) =====
+        # Current reading minus previous reading = usage
+        (r"Current\s*(?:Reading|Read)[:\s]*([\d,]+)[\s\S]{0,50}?Previous\s*(?:Reading|Read)[:\s]*([\d,]+)", "meter_diff_calc", 0.85),
+        (r"Meter\s*Read(?:ing)?[\s\S]{0,30}?Difference[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "meter_difference", 0.88),
         
         # ===== SCE SUMMARY TABLE (MEDIUM-HIGH CONFIDENCE) =====
         (r"([\d,]{5,})\s*kWh\s*\$?[\d,]+(?:\.\d+)?\s*Energy\s*Charges", "sce_before_charges", 0.85),
         (r"(?:On|Off|Mid|Super)[^\n]*kWh[^\n]*\n(?:[^\n]*kWh[^\n]*\n){1,5}\s*([\d,]{5,})\s*kWh", "sce_after_tou", 0.82),
         
         # ===== GENERIC LABELED (MEDIUM CONFIDENCE) =====
-        (r"Your\s*[Uu]sage\s*(?:this\s*month)?[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "your_usage", 0.85),
+        (r"Your\s*[Uu]sage\s*(?:this\s*(?:month|period))?[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "your_usage", 0.85),
         (r"Electricity\s*Used[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "electricity_used", 0.85),
         (r"Billed\s*kWh[:\s]*([\d,]+(?:\.\d+)?)", "billed_kwh", 0.80),
         (r"kWh\s*Billed[:\s]*([\d,]+(?:\.\d+)?)", "kwh_billed", 0.80),
@@ -1191,17 +1236,32 @@ def regex_extract_all_fields(raw_text):
         (r"kWh\s*Used[:\s]*([\d,]+(?:\.\d+)?)", "kwh_used", 0.78),
         (r"kWh\s*Delivered[:\s]*([\d,]+(?:\.\d+)?)", "kwh_delivered", 0.75),
         (r"Electric\s*Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "electric_delivery", 0.75),
+        (r"Units\s*Used[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "units_used", 0.75),
+        (r"Consumption[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "consumption", 0.72),
+        
+        # ===== TIER/BLOCK PATTERNS (MEDIUM CONFIDENCE) =====
+        # Sum of tier usage = total (for utilities that use tiered pricing)
+        (r"Tier\s*\d+[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "tier_usage", 0.65),
+        (r"Block\s*\d+[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "block_usage", 0.65),
+        (r"Baseline[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "baseline_usage", 0.65),
+        (r"Over\s*Baseline[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "over_baseline", 0.62),
         
         # ===== CONTEXTUAL (MEDIUM-LOW CONFIDENCE) =====
         (r"Energy\s*Charges[\s\S]{0,20}?([\d,]{5,})\s*kWh", "energy_charges_context", 0.70),
         (r"Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "delivery", 0.68),
         (r"Generation[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "generation", 0.68),
+        (r"Supply[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "supply", 0.68),
+        (r"Distribution[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "distribution", 0.66),
         (r"Meter\s*Reading.*?Total.*?([\d,]+(?:\.\d+)?)\s*kWh", "meter_reading_total", 0.65),
         (r"[Uu](?:sage|sed)[:\s]*([\d,]{5,})\s*kWh", "usage_nearby", 0.60),
         
-        # ===== LOW CONFIDENCE - MAY CATCH TOU PERIODS =====
-        (r"(?:On|Off|Mid|Super)\s*(?:off\s*)?peak\s*[\s\S]{0,50}?([\d,]+)\s*kWh", "tou_period_maybe", 0.40),
+        # ===== TOU PATTERNS (MEDIUM-LOW CONFIDENCE) =====
+        (r"(?:On|Off|Mid|Super)\s*(?:off\s*)?[Pp]eak\s*[\s\S]{0,50}?([\d,]+)\s*kWh", "tou_period_maybe", 0.40),
+        (r"(?:Peak|Part[- ]?Peak|Off[- ]?Peak)\s*Usage[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "tou_usage", 0.45),
+        
+        # ===== LOW CONFIDENCE FALLBACKS =====
         (r"\b([\d,]{5,})\s*kWh\b", "standalone_kwh", 0.35),
+        (r"kWh[:\s]*([\d,]{4,})", "kwh_prefix", 0.30),
     ]
     
     # Use multi-location validation to get the best kWh value
@@ -1220,28 +1280,61 @@ def regex_extract_all_fields(raw_text):
         print(f"[regex_extract] total_kwh: {result['total_kwh']} (from {kwh_source}, {len(kwh_candidates)} candidates)")
     
     # ========== TOTAL AMOUNT (Multi-Location Validation) ==========
-    # SCE bills show charges in MULTIPLE locations. We extract from ALL and cross-validate.
-    # IMPORTANT: "Your new charges" is the CURRENT PERIOD, "Amount due" may include past due.
+    # UNIVERSAL extraction - works for SCE, PG&E, SDG&E, LADWP, Vernon, RPU, and others.
+    # IMPORTANT: Prefer "current charges" over "amount due" (may include past due).
     #
     # Confidence scores reflect reliability:
-    # - "Your new charges" = highest confidence (current period only)
-    # - "Total current charges" = high confidence
-    # - "Amount due" = lower confidence (may include past due)
+    # - "New charges" / "Current charges" = highest (current period only)
+    # - "Total charges" = high confidence
+    # - "Amount due" = lower (may include past due/late fees)
     amount_patterns_with_confidence = [
-        # ===== SCE NEW CHARGES (HIGHEST CONFIDENCE - current period only) =====
+        # ===== UNIVERSAL "NEW/CURRENT CHARGES" (HIGHEST CONFIDENCE) =====
+        # These patterns work across ALL utilities for current period charges
+        (r"(?:Total\s*)?[Nn]ew\s+[Cc]harges[:\s]*\$?\s*([\d,]+\.\d{2})", "new_charges_generic", 0.98),
+        (r"(?:Total\s*)?Current\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "current_charges", 0.96),
+        (r"This\s*(?:Month|Period)(?:'s)?\s*Charges?[:\s]*\$?\s*([\d,]+\.\d{2})", "this_period_charges", 0.95),
+        (r"Total\s*Electric\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "total_electric_charges", 0.94),
+        (r"Electric\s*Charges\s*Total[:\s]*\$?\s*([\d,]+\.\d{2})", "electric_charges_total", 0.94),
+        (r"Total\s*Charges\s*This\s*Period[:\s]*\$?\s*([\d,]+\.\d{2})", "total_this_period", 0.94),
+        (r"\$([\d,]+\.\d{2})\s+Total\s*(?:Charges)?$", "dollar_total_suffix", 0.90),
+        
+        # ===== SCE SPECIFIC (HIGH CONFIDENCE) =====
         (r"Your\s+new\s+charges\s+\$\s*([\d,]+\.\d{2})", "sce_new_charges_exact", 1.0),
         (r"Your\s+new\s+charges[:\s]*\$?\s*([\d,]+\.\d{2})", "sce_new_charges", 0.98),
-        (r"(?:Total\s*)?[Nn]ew\s+[Cc]harges[:\s]*\$?\s*([\d,]+\.\d{2})", "new_charges_generic", 0.95),
         
-        # ===== EXPLICIT CURRENT PERIOD (HIGH CONFIDENCE) =====
-        (r"(?:Total\s*)?Current\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "current_charges", 0.92),
-        (r"This\s*Month(?:'s)?\s*Charges?[:\s]*\$?\s*([\d,]+\.\d{2})", "this_month_charges", 0.90),
-        (r"Total\s*Electric\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "total_electric_charges", 0.90),
-        (r"Total\s*Gas\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "total_gas_charges", 0.90),
-        (r"\$([\d,]+\.\d{2})\s+Total\s*$", "dollar_total_suffix", 0.88),
+        # ===== PG&E SPECIFIC (HIGH CONFIDENCE) =====
+        # PG&E: "Total amount due" or "Electric charges $X"
+        (r"Electric\s*[Cc]harges[:\s]*\$?\s*([\d,]+\.\d{2})", "pge_electric_charges", 0.94),
+        (r"Gas\s*[Cc]harges[:\s]*\$?\s*([\d,]+\.\d{2})", "pge_gas_charges", 0.94),
+        (r"Total\s*Energy\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "pge_energy_charges", 0.92),
+        (r"Your\s*Total\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "pge_your_total", 0.90),
         
-        # ===== LADWP (HIGH CONFIDENCE - usually doesn't have past due issue) =====
+        # ===== SDG&E SPECIFIC (HIGH CONFIDENCE) =====
+        (r"Total\s*Electricity\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "sdge_electricity_charges", 0.94),
+        (r"Bundled\s*Service\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "sdge_bundled", 0.92),
+        (r"Electric\s*Commodity[:\s]*\$?\s*([\d,]+\.\d{2})", "sdge_commodity", 0.88),
+        
+        # ===== LADWP SPECIFIC (HIGH CONFIDENCE) =====
         (r"Total\s*Amount\s*Due\s*\$\s*([\d,]+\.\d{2})", "ladwp_total_due", 0.92),
+        (r"Electric\s*Service\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "ladwp_electric_service", 0.92),
+        (r"Power\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "ladwp_power_charges", 0.90),
+        
+        # ===== CITY OF VERNON SPECIFIC =====
+        (r"Electric\s*Service[:\s]*\$?\s*([\d,]+\.\d{2})", "vernon_electric_service", 0.92),
+        (r"Utility\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "vernon_utility_charges", 0.90),
+        (r"Municipal\s*Electric[:\s]*\$?\s*([\d,]+\.\d{2})", "vernon_municipal", 0.90),
+        
+        # ===== RPU (RIVERSIDE PUBLIC UTILITIES) SPECIFIC =====
+        (r"Electric\s*Service\s*Charge[:\s]*\$?\s*([\d,]+\.\d{2})", "rpu_electric_service", 0.92),
+        (r"Total\s*Utility\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "rpu_utility_charges", 0.92),
+        (r"Residential\s*Electric[:\s]*\$?\s*([\d,]+\.\d{2})", "rpu_residential", 0.90),
+        (r"Commercial\s*Electric[:\s]*\$?\s*([\d,]+\.\d{2})", "rpu_commercial", 0.90),
+        
+        # ===== GENERIC UTILITY PATTERNS (MEDIUM-HIGH CONFIDENCE) =====
+        (r"Total\s*Gas\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "total_gas_charges", 0.90),
+        (r"Service\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "service_charges", 0.85),
+        (r"Delivery\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "delivery_charges", 0.82),
+        (r"Supply\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "supply_charges", 0.82),
         
         # ===== AMOUNT DUE PATTERNS (MEDIUM CONFIDENCE - may include past due) =====
         (r"Amount\s+due\s+\$\s*([\d,]+\.\d{2})", "amount_due_exact", 0.70),
@@ -1249,6 +1342,8 @@ def regex_extract_all_fields(raw_text):
         (r"Total\s+amount\s+you\s+owe\s+by\s+\d{1,2}/\d{1,2}/\d{2,4}\s+\$?\s*([\d,]+\.\d{2})", "total_owe_by_date", 0.65),
         (r"Total\s+amount\s+you\s+owe[\s\S]{0,30}?\$\s*([\d,]+\.\d{2})", "total_owe", 0.62),
         (r"Total\s*Amount\s*You\s*Owe[:\s]*\$?\s*([\d,]+\.\d{2})", "total_amount_owe", 0.60),
+        (r"Please\s*Pay[:\s]*\$?\s*([\d,]+\.\d{2})", "please_pay", 0.58),
+        (r"Pay\s*This\s*Amount[:\s]*\$?\s*([\d,]+\.\d{2})", "pay_this_amount", 0.58),
         
         # ===== GENERIC TOTAL/DUE (LOWER CONFIDENCE) =====
         (r"Total\s*(?:Due|Owed)[:\s]*\$?\s*([\d,]+\.\d{2})", "total_due", 0.55),
