@@ -376,6 +376,9 @@ def upload_bill_file(project_id):
     try:
         # Read file content and compute SHA-256 hash
         file_content = file.read()
+        print(f"[bills] Received file: {file.filename}, content_length={len(file_content)}, content_type={file.content_type}")
+        if len(file_content) == 0:
+            print(f"[bills] WARNING: Received empty file content for {file.filename}!")
         file_sha256 = hashlib.sha256(file_content).hexdigest()
         file.seek(0)  # Reset file pointer for saving
         
