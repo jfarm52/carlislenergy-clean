@@ -711,19 +711,31 @@ def extract_with_multi_location_validation(raw_text, patterns_with_confidence, f
                         "max_agreement_conf": max_conf_in_agreement
                     })
     
-    # If we have valid high-confidence agreements, use the best one
+    # Get the single highest-confidence candidate
+    highest_single = candidates_sorted[0]
+    
+    # If we have valid high-confidence agreements, compare with single best
     if valid_agreements:
         # Sort by: confidence first, then agreement count
         valid_agreements.sort(key=lambda x: (x["confidence"], x["agreement_count"]), reverse=True)
-        best = valid_agreements[0]
-        print(f"[multi-location] {field_name}: VALIDATED! {best['agreement_count']} sources agree on {best['value']:,.2f} (max conf: {best['max_agreement_conf']:.2f})")
-        return best["value"], best["source"], candidates
+        best_agreement = valid_agreements[0]
+        
+        # CRITICAL FIX: If a single source has HIGHER confidence than the best agreement,
+        # trust the single source. A 0.95 confidence explicit "Total kWh" pattern
+        # should beat a 0.78 agreement from generic patterns.
+        if highest_single["confidence"] > best_agreement["confidence"]:
+            print(f"[multi-location] {field_name}: Single source ({highest_single['confidence']:.2f}) beats agreement ({best_agreement['confidence']:.2f})")
+            print(f"[multi-location] {field_name}: Using {highest_single['value']:,.2f} from '{highest_single['source']}'")
+            return highest_single["value"], highest_single["source"], candidates
+        
+        # Agreement has equal or higher confidence - use it
+        print(f"[multi-location] {field_name}: VALIDATED! {best_agreement['agreement_count']} sources agree on {best_agreement['value']:,.2f} (max conf: {best_agreement['max_agreement_conf']:.2f})")
+        return best_agreement["value"], best_agreement["source"], candidates
     
     # No valid high-confidence agreement - use the single highest confidence source
     # This is the SAFE fallback - trust the most confident pattern
-    best = candidates_sorted[0]
-    print(f"[multi-location] {field_name}: No valid agreement. Using highest confidence: {best['value']:,.2f} from '{best['source']}' (conf: {best['confidence']:.2f})")
-    return best["value"], best["source"], candidates
+    print(f"[multi-location] {field_name}: No valid agreement. Using highest confidence: {highest_single['value']:,.2f} from '{highest_single['source']}' (conf: {highest_single['confidence']:.2f})")
+    return highest_single["value"], highest_single["source"], candidates
 
 
 def regex_extract_all_fields(raw_text):
@@ -1262,33 +1274,35 @@ def regex_extract_all_fields(raw_text):
         (r"([\d,]{5,})\s*kWh\s*\$?[\d,]+(?:\.\d+)?\s*Energy\s*Charges", "sce_before_charges", 0.85),
         (r"(?:On|Off|Mid|Super)[^\n]*kWh[^\n]*\n(?:[^\n]*kWh[^\n]*\n){1,5}\s*([\d,]{5,})\s*kWh", "sce_after_tou", 0.82),
         
-        # ===== GENERIC LABELED (MEDIUM CONFIDENCE) =====
-        (r"Your\s*[Uu]sage\s*(?:this\s*(?:month|period))?[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "your_usage", 0.85),
-        (r"Electricity\s*Used[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "electricity_used", 0.85),
-        (r"Billed\s*kWh[:\s]*([\d,]+(?:\.\d+)?)", "billed_kwh", 0.80),
-        (r"kWh\s*Billed[:\s]*([\d,]+(?:\.\d+)?)", "kwh_billed", 0.80),
-        (r"Usage[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "usage_kwh", 0.78),
-        (r"kWh\s*Used[:\s]*([\d,]+(?:\.\d+)?)", "kwh_used", 0.78),
-        (r"kWh\s*Delivered[:\s]*([\d,]+(?:\.\d+)?)", "kwh_delivered", 0.75),
-        (r"Electric\s*Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "electric_delivery", 0.75),
-        (r"Units\s*Used[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "units_used", 0.75),
-        (r"Consumption[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "consumption", 0.72),
+        # ===== GENERIC LABELED (LOWER CONFIDENCE - can match TOU periods!) =====
+        # These patterns don't explicitly say "Total" so they might match individual
+        # TOU periods, billing history rows, or sub-totals. Keep below 0.70 threshold.
+        (r"Your\s*[Uu]sage\s*(?:this\s*(?:month|period))?[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "your_usage", 0.68),
+        (r"Electricity\s*Used[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "electricity_used", 0.68),
+        (r"Billed\s*kWh[:\s]*([\d,]+(?:\.\d+)?)", "billed_kwh", 0.65),
+        (r"kWh\s*Billed[:\s]*([\d,]+(?:\.\d+)?)", "kwh_billed", 0.65),
+        (r"Usage[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "usage_kwh", 0.55),
+        (r"kWh\s*Used[:\s]*([\d,]+(?:\.\d+)?)", "kwh_used", 0.55),
+        (r"kWh\s*Delivered[:\s]*([\d,]+(?:\.\d+)?)", "kwh_delivered", 0.52),
+        (r"Electric\s*Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "electric_delivery", 0.52),
+        (r"Units\s*Used[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "units_used", 0.50),
+        (r"Consumption[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "consumption", 0.48),
         
-        # ===== TIER/BLOCK PATTERNS (MEDIUM CONFIDENCE) =====
+        # ===== TIER/BLOCK PATTERNS (LOW CONFIDENCE - these are sub-totals) =====
         # Sum of tier usage = total (for utilities that use tiered pricing)
-        (r"Tier\s*\d+[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "tier_usage", 0.65),
-        (r"Block\s*\d+[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "block_usage", 0.65),
-        (r"Baseline[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "baseline_usage", 0.65),
-        (r"Over\s*Baseline[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "over_baseline", 0.62),
+        (r"Tier\s*\d+[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "tier_usage", 0.45),
+        (r"Block\s*\d+[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "block_usage", 0.45),
+        (r"Baseline[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "baseline_usage", 0.45),
+        (r"Over\s*Baseline[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "over_baseline", 0.42),
         
-        # ===== CONTEXTUAL (MEDIUM-LOW CONFIDENCE) =====
-        (r"Energy\s*Charges[\s\S]{0,20}?([\d,]{5,})\s*kWh", "energy_charges_context", 0.70),
-        (r"Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "delivery", 0.68),
-        (r"Generation[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "generation", 0.68),
-        (r"Supply[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "supply", 0.68),
-        (r"Distribution[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "distribution", 0.66),
-        (r"Meter\s*Reading.*?Total.*?([\d,]+(?:\.\d+)?)\s*kWh", "meter_reading_total", 0.65),
-        (r"[Uu](?:sage|sed)[:\s]*([\d,]{5,})\s*kWh", "usage_nearby", 0.60),
+        # ===== CONTEXTUAL (LOW CONFIDENCE - ambiguous context) =====
+        (r"Energy\s*Charges[\s\S]{0,20}?([\d,]{5,})\s*kWh", "energy_charges_context", 0.55),
+        (r"Delivery[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "delivery", 0.48),
+        (r"Generation[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "generation", 0.48),
+        (r"Supply[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "supply", 0.48),
+        (r"Distribution[:\s]*([\d,]+(?:\.\d+)?)\s*kWh", "distribution", 0.46),
+        (r"Meter\s*Reading.*?Total.*?([\d,]+(?:\.\d+)?)\s*kWh", "meter_reading_total", 0.55),
+        (r"[Uu](?:sage|sed)[:\s]*([\d,]{5,})\s*kWh", "usage_nearby", 0.40),
         
         # ===== TOU PATTERNS (MEDIUM-LOW CONFIDENCE) =====
         (r"(?:On|Off|Mid|Super)\s*(?:off\s*)?[Pp]eak\s*[\s\S]{0,50}?([\d,]+)\s*kWh", "tou_period_maybe", 0.40),
