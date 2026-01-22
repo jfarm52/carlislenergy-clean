@@ -1415,9 +1415,10 @@ def regex_extract_all_fields(raw_text):
         result["_amount_candidates_count"] = len(amount_candidates)
         print(f"[regex_extract] total_amount: {result['total_amount']} (from {amount_source}, {len(amount_candidates)} candidates)")
     
-    # IMPORTANT: Add late payment charge if present (for accurate total)
+    # Extract late payment charge if present (store separately, do NOT add to total_amount)
+    # IMPORTANT: total_amount should reflect the actual bill charges for the period,
+    # NOT including late fees. Late fees are stored separately for reference.
     # SCE format: "Late payment charge $150.22" or "Late payment charge $247.29"
-    # OCR can mangle this, so we use multiple patterns
     if result.get("total_amount"):
         late_fee_patterns = [
             # Standard patterns
@@ -1436,25 +1437,17 @@ def regex_extract_all_fields(raw_text):
             r"[Pp]ast\s+due\s+(?:charge|fee|penalty)\s*\$?([\d,]+\.\d{2})",
             r"[Pp]enalty\s+(?:charge|fee)\s*\$?([\d,]+\.\d{2})",
         ]
-        late_fee_found = False
         for pattern in late_fee_patterns:
             match = re.search(pattern, raw_text, re.IGNORECASE)
             if match:
                 try:
                     late_fee = float(match.group(1).replace(",", ""))
                     if late_fee > 0 and late_fee < 2000:  # Reasonable late fee range (up to $2k)
-                        result["total_amount"] += late_fee
-                        print(f"[regex_extract] Added late payment charge ${late_fee} -> total_amount: {result['total_amount']}")
-                        late_fee_found = True
+                        result["late_fee"] = late_fee
+                        print(f"[regex_extract] Found late payment charge ${late_fee} (stored separately, not added to total_amount)")
                         break
                 except (ValueError, TypeError):
                     pass
-        
-        if not late_fee_found:
-            # Debug: Show nearby text where late fees might be
-            late_context = re.search(r".{0,30}[Ll]ate.{0,50}", raw_text)
-            if late_context:
-                print(f"[regex_extract] DEBUG: Found 'late' in text but no fee captured: '{late_context.group(0)[:60]}...'")
     
     # ========== METER NUMBER ==========
     # SCE FORMAT OBSERVED:
