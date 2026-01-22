@@ -6270,6 +6270,55 @@
                         path = cleanPath;
                     }
                     
+                    // Project-specific views that require a loaded project
+                    const projectRequiredPaths = ['current-project', 'utility-bills', 'customer-info', 'print'];
+                    const isProjectPath = projectRequiredPaths.includes(path);
+                    
+                    console.log('[nav] DEBUG: path=' + path + ', isProjectPath=' + isProjectPath);
+                    console.log('[nav] DEBUG: ProjectState.currentProjectId=' + ProjectState.currentProjectId);
+                    console.log('[nav] DEBUG: ProjectState.project_id=' + ProjectState.project_id);
+                    
+                    // If navigating to a project-specific view, ensure project is loaded first
+                    if (isProjectPath && !ProjectState.currentProjectId && !ProjectState.project_id) {
+                        console.log('[nav] Project view requested but no project loaded - attempting restore');
+                        
+                        // Try to restore from localStorage
+                        const dataStr = localStorage.getItem('currentProject');
+                        console.log('[nav] DEBUG: localStorage currentProject exists:', !!dataStr);
+                        if (dataStr) {
+                            console.log('[nav] DEBUG: localStorage length:', dataStr.length);
+                            try {
+                                const data = JSON.parse(dataStr);
+                                console.log('[nav] DEBUG: parsed data keys:', Object.keys(data));
+                                console.log('[nav] DEBUG: data.currentProjectId:', data.currentProjectId);
+                                console.log('[nav] DEBUG: data.entries?.length:', data.entries?.length);
+                                console.log('[nav] DEBUG: data.siteData?.customer:', data.siteData?.customer);
+                                
+                                if (data.currentProjectId || data.project_id || data.siteData?.project_id) {
+                                    console.log('[nav] Restoring project from localStorage for refresh');
+                                    ProjectState.load(data);
+                                    
+                                    console.log('[nav] DEBUG after load: entries.length:', entries.length);
+                                    console.log('[nav] DEBUG after load: siteData.customer:', siteData.customer);
+                                    
+                                    console.log('[nav] Project restored, proceeding to:', path);
+                                } else {
+                                    console.log('[nav] No project ID in localStorage, redirecting to home');
+                                    window.history.replaceState(null, '', '/home');
+                                    path = 'home';
+                                }
+                            } catch (e) {
+                                console.error('[nav] Failed to restore project:', e);
+                                window.history.replaceState(null, '', '/home');
+                                path = 'home';
+                            }
+                        } else {
+                            console.log('[nav] No saved project, redirecting to home');
+                            window.history.replaceState(null, '', '/home');
+                            path = 'home';
+                        }
+                    }
+                    
                     // Handle legacy hash URLs by redirecting to path
                     if (hash && !path) {
                         window.history.replaceState(null, '', '/' + hash);
@@ -6367,6 +6416,7 @@
                 this.currentView = viewName;
                 
                 // Update URL path (using pushState for clean URLs)
+                // IMPORTANT: Only preserve ?projectId for project-specific views
                 if (updateHash) {
                     const viewToPath = {
                         'home': '/home',
@@ -6378,8 +6428,21 @@
                         'printView': '/print'
                     };
                     const newPath = viewToPath[viewName] || '/home';
-                    if (window.location.pathname !== newPath) {
-                        window.history.pushState(null, '', newPath);
+                    
+                    // Only preserve ?projectId for project-specific views
+                    const projectViews = ['currentProject', 'utilityBills', 'customerInfo', 'printView'];
+                    const shouldPreserveProjectId = projectViews.includes(viewName);
+                    
+                    let newUrl = newPath;
+                    if (shouldPreserveProjectId) {
+                        // Keep the projectId query parameter
+                        const queryString = window.location.search;
+                        newUrl = newPath + queryString;
+                    }
+                    // For non-project views (home, projects, etc.), use clean URL without query params
+                    
+                    if (window.location.pathname + window.location.search !== newUrl) {
+                        window.history.pushState(null, '', newUrl);
                     }
                 }
                 
@@ -10550,6 +10613,13 @@
                 // Load into ProjectState
                 ProjectState.load(proj);
                 
+                // CRITICAL: Always ensure currentProjectId matches the projectId we fetched
+                // This guarantees the Electric Bills section and other features work correctly
+                ProjectState.currentProjectId = projectId;
+                ProjectState.project_id = projectId;
+                ProjectState.siteData.project_id = projectId;
+                console.log('[loadProjectFromService] Set currentProjectId:', projectId);
+                
                 // Sync to legacy variables
                 Object.keys(siteData).forEach(key => delete siteData[key]);
                 Object.assign(siteData, proj.siteData || {});
@@ -10607,6 +10677,28 @@
                 }
                 
                 console.log('[loadProjectFromService] Loaded project:', projectId);
+                
+                // CRITICAL: Update URL with projectId so refresh works
+                if (typeof updateUrlWithProjectId === 'function') {
+                    updateUrlWithProjectId(projectId);
+                }
+                
+                // CRITICAL: Save to localStorage immediately so refresh works
+                try {
+                    const snapshot = {
+                        project_id: ProjectState.project_id,
+                        currentProjectId: ProjectState.currentProjectId,
+                        currentProjectName: ProjectState.currentProjectName,
+                        siteData: ProjectState.siteData,
+                        entries: ProjectState.entries,
+                        photos: ProjectState.photos || [],
+                        lastSavedAt: new Date().toISOString()
+                    };
+                    localStorage.setItem('currentProject', JSON.stringify(snapshot));
+                    console.log('[loadProjectFromService] Saved to localStorage for refresh support');
+                } catch (e) {
+                    console.error('[loadProjectFromService] Failed to save to localStorage:', e);
+                }
                 
                 // Render embedded bills section
                 if (typeof renderEmbeddedBillsSection === 'function') {
@@ -11407,7 +11499,7 @@
                                 const billKwh = bill.total_kwh || bill.totalKwh || 0;
                                 const billCost = bill.total_amount_due || bill.totalAmountDue || 0;
                                 const billRateValue = billKwh > 0 ? ((billCost / billKwh) * 100) : 0;
-                                const billDays = computeDaysInPeriod(bill.daysInPeriod, bill.periodStart, bill.periodEnd) || 30;
+                                const billDays = computeDaysInPeriod(bill.daysInPeriod, bill.periodStart || bill.period_start, bill.periodEnd || bill.period_end) || 30;
                                 const billAvgDayValue = billDays > 0 ? (billCost / billDays) : 0;
                                 
                                 html += `
@@ -11514,8 +11606,9 @@
         };
         
         function formatBillPeriod(bill) {
-            const start = bill.periodStart;
-            const end = bill.periodEnd;
+            // Support both camelCase (legacy) and snake_case (API) field names
+            const start = bill.periodStart || bill.period_start;
+            const end = bill.periodEnd || bill.period_end;
             if (end) {
                 const d = new Date(end);
                 return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
@@ -11942,6 +12035,15 @@
             
             for (const file of files) {
                 try {
+                    console.log(`[embeddedBills] Uploading file: ${file.name}, size: ${file.size}, type: ${file.type}`);
+                    
+                    // Verify file has content
+                    if (!file.size || file.size === 0) {
+                        console.error(`[embeddedBills] ERROR: File ${file.name} has zero size!`);
+                        showToast(`File ${file.name} appears to be empty`, 'error');
+                        continue;
+                    }
+                    
                     const formData = new FormData();
                     formData.append('file', file);
                     
@@ -14973,7 +15075,7 @@
             // Use autosave data if provided, otherwise use saved project data
             const dataSource = autosaveOverride || proj;
             
-            // Update local state
+            // Update local state (global variables)
             Object.keys(siteData).forEach(key => delete siteData[key]);
             Object.assign(siteData, dataSource.siteData || {});
             
@@ -14985,9 +15087,22 @@
                 photos.push(...dataSource.photos);
             }
             
+            // CRITICAL: Also update ProjectState.siteData and ProjectState.entries
+            // These are used by saveProject() when saving to localStorage
+            Object.keys(ProjectState.siteData).forEach(key => delete ProjectState.siteData[key]);
+            Object.assign(ProjectState.siteData, siteData);
+            
+            ProjectState.entries.length = 0;
+            ProjectState.entries.push(...entries);
+            
+            ProjectState.photos = ProjectState.photos || [];
+            ProjectState.photos.length = 0;
+            ProjectState.photos.push(...photos);
+            
             // Update project_id for consistency
             siteData.project_id = ProjectState.currentProjectId;
             ProjectState.project_id = ProjectState.currentProjectId;
+            ProjectState.siteData.project_id = ProjectState.currentProjectId;
             
             // Populate site form values
             document.getElementById('site-date').value = siteData.date || '';
@@ -15022,8 +15137,28 @@
             }
             updateCurrentProjectDisplay();
             
-            // Save to localStorage
-            SaveController.queueSave('project-load');
+            // Save to localStorage IMMEDIATELY (not debounced) so refresh works
+            // This is critical for page refresh to restore the project
+            try {
+                const snapshot = {
+                    project_id: ProjectState.project_id,
+                    currentProjectId: ProjectState.currentProjectId,
+                    currentProjectName: ProjectState.currentProjectName,
+                    siteData: ProjectState.siteData,
+                    entries: ProjectState.entries,
+                    photos: ProjectState.photos || [],
+                    lastSavedAt: new Date().toISOString()
+                };
+                console.log('[applyProjectData] DEBUG: Saving snapshot with entries.length:', snapshot.entries.length);
+                console.log('[applyProjectData] DEBUG: Saving snapshot with siteData.customer:', snapshot.siteData?.customer);
+                console.log('[applyProjectData] DEBUG: Saving snapshot with currentProjectId:', snapshot.currentProjectId);
+                localStorage.setItem('currentProject', JSON.stringify(snapshot));
+                console.log('[applyProjectData] Saved to localStorage immediately, verifying...');
+                const verify = localStorage.getItem('currentProject');
+                console.log('[applyProjectData] DEBUG: Verified localStorage length:', verify?.length);
+            } catch (e) {
+                console.error('[applyProjectData] Failed to save to localStorage:', e);
+            }
             
             // Switch to data view
             siteSection.classList.add('hidden');
@@ -18354,14 +18489,30 @@
                     return;
                 }
                 
+                // CRITICAL: Set ProjectState IDs so Electric Bills and other features work
+                ProjectState.currentProjectId = projectId;
+                ProjectState.project_id = projectId;
+                ProjectState.currentProjectName = proj._metadata?.name || proj.name || proj.siteData?.customer || null;
+                console.log('[loadProjectById] Set currentProjectId:', projectId);
+                
                 siteData = proj.siteData || {};
+                siteData.project_id = projectId; // Ensure siteData also has the project_id
                 entries = migrateEntries(proj.entries || []); // Migrate old 'count' to 'room-count'
+                
+                // Sync to ProjectState
+                Object.keys(ProjectState.siteData).forEach(key => delete ProjectState.siteData[key]);
+                Object.assign(ProjectState.siteData, siteData);
+                ProjectState.entries.length = 0;
+                ProjectState.entries.push(...entries);
                 
                 // Load photos and migrate to new format if needed
                 photos.length = 0; // Clear existing photos
                 if (Array.isArray(proj.photos)) {
                     photos.push(...proj.photos);
                 }
+                ProjectState.photos = ProjectState.photos || [];
+                ProjectState.photos.length = 0;
+                ProjectState.photos.push(...photos);
                 migratePhotosToNewFormat(); // Migrate old field names to new format
                 
                 // Populate site form values
