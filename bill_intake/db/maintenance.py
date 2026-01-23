@@ -139,7 +139,7 @@ def merge_duplicate_accounts(project_id=None):
                     
                     # Update meters to point to keeper account
                     cur.execute("""
-                        UPDATE meters SET account_id = %s WHERE account_id = %s
+                        UPDATE utility_meters SET utility_account_id = %s WHERE utility_account_id = %s
                     """, (keeper['id'], dup['id']))
                     meters_moved = cur.rowcount
                     
@@ -175,6 +175,123 @@ def merge_duplicate_accounts(project_id=None):
             return {'merged': merged_count, 'details': details}
     except Exception as e:
         conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+
+def merge_accounts_by_shared_meter(project_id=None):
+    """
+    Find and merge accounts that share the same meter number.
+    
+    This handles race conditions where parallel bill processing creates
+    multiple accounts for the same meter (with different OCR'd account numbers).
+    
+    Rule: A meter can only belong to ONE account. If multiple accounts have
+    the same meter, merge them into the oldest one.
+    """
+    conn = get_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Find meters that appear in multiple accounts within the same project
+            query = """
+                SELECT m.meter_number, a.project_id, 
+                       array_agg(DISTINCT a.id ORDER BY a.created_at) as account_ids,
+                       array_agg(DISTINCT a.account_number ORDER BY a.created_at) as account_numbers
+                FROM utility_meters m
+                JOIN utility_accounts a ON m.utility_account_id = a.id
+                WHERE m.meter_number != 'Unknown' AND m.meter_number != 'Primary'
+            """
+            if project_id:
+                query += " AND a.project_id = %s"
+            query += """
+                GROUP BY m.meter_number, a.project_id
+                HAVING COUNT(DISTINCT a.id) > 1
+            """
+            
+            if project_id:
+                cur.execute(query, (project_id,))
+            else:
+                cur.execute(query)
+            
+            shared_meters = cur.fetchall()
+            
+            merged_count = 0
+            details = []
+            
+            for row in shared_meters:
+                meter_number = row['meter_number']
+                proj_id = row['project_id']
+                account_ids = row['account_ids']
+                account_numbers = row['account_numbers']
+                
+                if len(account_ids) < 2:
+                    continue
+                
+                # Keep the first (oldest) account, merge others into it
+                keeper_id = account_ids[0]
+                to_merge_ids = account_ids[1:]
+                
+                print(f"[maintenance] Meter '{meter_number}' found in {len(account_ids)} accounts: {account_numbers}")
+                print(f"[maintenance] Keeping account {keeper_id}, merging {to_merge_ids}")
+                
+                detail = {
+                    'project_id': proj_id,
+                    'meter_number': meter_number,
+                    'kept_account_id': keeper_id,
+                    'merged_account_ids': []
+                }
+                
+                for dup_id in to_merge_ids:
+                    # Move all bills from duplicate account to keeper
+                    cur.execute("""
+                        UPDATE bills SET account_id = %s WHERE account_id = %s
+                    """, (keeper_id, dup_id))
+                    bills_moved = cur.rowcount
+                    
+                    # Move all meters from duplicate account to keeper
+                    # (Note: some meters might already exist in keeper, handle gracefully)
+                    cur.execute("""
+                        UPDATE utility_meters SET utility_account_id = %s 
+                        WHERE utility_account_id = %s 
+                        AND meter_number NOT IN (
+                            SELECT meter_number FROM utility_meters WHERE utility_account_id = %s
+                        )
+                    """, (keeper_id, dup_id, keeper_id))
+                    meters_moved = cur.rowcount
+                    
+                    # Delete duplicate meters that already exist in keeper
+                    cur.execute("""
+                        DELETE FROM utility_meters 
+                        WHERE utility_account_id = %s
+                    """, (dup_id,))
+                    
+                    # Delete the duplicate account (cascade will clean up remaining refs)
+                    cur.execute("""
+                        DELETE FROM utility_accounts WHERE id = %s
+                    """, (dup_id,))
+                    
+                    detail['merged_account_ids'].append({
+                        'id': dup_id,
+                        'bills_moved': bills_moved,
+                        'meters_moved': meters_moved
+                    })
+                    merged_count += 1
+                    print(f"[maintenance] Merged account {dup_id} into {keeper_id} ({bills_moved} bills, {meters_moved} meters)")
+                
+                details.append(detail)
+            
+            conn.commit()
+            
+            if merged_count > 0:
+                print(f"[maintenance] Total accounts merged by shared meter: {merged_count}")
+            else:
+                print("[maintenance] No accounts with shared meters found")
+            
+            return {'merged': merged_count, 'details': details}
+    except Exception as e:
+        conn.rollback()
+        print(f"[maintenance] Error merging accounts by meter: {e}")
         raise e
     finally:
         conn.close()

@@ -310,10 +310,15 @@ try:
     
     # Auto-cleanup duplicate accounts on startup
     try:
-        from bill_intake.db.maintenance import merge_duplicate_accounts
+        from bill_intake.db.maintenance import merge_duplicate_accounts, merge_accounts_by_shared_meter
         result = merge_duplicate_accounts(project_id=None)
         if result['merged'] > 0:
             print(f"[BOOT] Merged {result['merged']} duplicate accounts on startup")
+        
+        # Also merge accounts that share the same meter (race condition cleanup)
+        meter_result = merge_accounts_by_shared_meter(project_id=None)
+        if meter_result['merged'] > 0:
+            print(f"[BOOT] Merged {meter_result['merged']} accounts with shared meters on startup")
     except Exception as merge_err:
         print(f"[BOOT] Warning: Could not run duplicate account cleanup: {merge_err}")
 except Exception as e:
