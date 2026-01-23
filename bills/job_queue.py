@@ -327,18 +327,24 @@ _global_queue: Optional[JobQueue] = None
 _queue_lock = threading.Lock()
 
 
-def get_job_queue(max_workers: int = 8) -> JobQueue:
+def get_job_queue(max_workers: int = None) -> JobQueue:
     """
     Get or create the global job queue singleton.
     
     Args:
         max_workers: Maximum concurrent workers (only used on first call)
+                     Defaults to MAX_WORKERS env var, or 2 for reliability
         
     Returns:
         The global JobQueue instance
     """
+    import os
     global _global_queue
     with _queue_lock:
         if _global_queue is None:
+            # Default to 2 workers for reliability on resource-limited hosts (Replit)
+            # Can override with MAX_WORKERS env var for faster local processing
+            if max_workers is None:
+                max_workers = int(os.environ.get("MAX_WORKERS", "2"))
             _global_queue = JobQueue(max_workers=max_workers)
         return _global_queue
