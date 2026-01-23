@@ -36,7 +36,8 @@ def get_project_print_pdf(project_id: str):
         conds = [e for e in entries if e.get("section") == "cond"]
 
         def spec_pair(label, value):
-            return f'<span class="spec-label">{label}:</span> <span class="spec-value">{value}</span>'
+            # Wrap label+value in a nowrap container so they stay together (e.g., "HP: 3/4" won't break)
+            return f'<span class="spec-item"><span class="spec-label">{label}:</span> <span class="spec-value">{value}</span></span>'
 
         def build_mfr_html(entry):
             if not entry.get("room-mfg"):
@@ -66,22 +67,26 @@ def get_project_print_pdf(project_id: str):
             left_lines = []
             right_lines = []
 
-            # Left column
+            # Section-specific label for unit count
+            unit_label = "Evaporators" if is_evap else "Condensers"
+
+            # Left column - Line 1: Unit count and motors per unit
             line1 = []
             if entry.get("room-count"):
-                line1.append(spec_pair("Units", entry.get("room-count")))
+                line1.append(spec_pair(unit_label, entry.get("room-count")))
             if entry.get("room-fanMotorsPerUnit"):
-                line1.append(spec_pair("Motors Per Unit", entry.get("room-fanMotorsPerUnit")))
+                line1.append(spec_pair("Motors Ea", entry.get("room-fanMotorsPerUnit")))
             if line1:
                 left_lines.append(" | ".join(line1))
 
+            # Left column - Line 2: Motor specs (shortened labels to fit on one line)
             line2 = []
             if entry.get("room-voltage"):
-                line2.append(spec_pair("Voltage", entry.get("room-voltage")))
+                line2.append(spec_pair("V", entry.get("room-voltage")))
             if entry.get("room-phase"):
-                line2.append(spec_pair("Phase", entry.get("room-phase")))
+                line2.append(spec_pair("Ph", entry.get("room-phase")))
             if entry.get("room-amps"):
-                line2.append(spec_pair("FLA", entry.get("room-amps")))
+                line2.append(spec_pair("FLA Ea", entry.get("room-amps")))
             if entry.get("room-hp"):
                 line2.append(spec_pair("HP", entry.get("room-hp")))
             if entry.get("room-rpm"):
@@ -108,17 +113,17 @@ def get_project_print_pdf(project_id: str):
                 "room-shaftAdapterType"
             ):
                 r_line2.append(
-                    f'<span class="spec-label">Adapters:</span> <span class="spec-value">({entry.get("room-shaftAdapterQty")}) {entry.get("room-shaftAdapterType")}</span>'
+                    f'<span class="spec-item"><span class="spec-label">Adapters:</span> <span class="spec-value">({entry.get("room-shaftAdapterQty")}) {entry.get("room-shaftAdapterType")}</span></span>'
                 )
             if entry.get("room-bladesNeeded") and int(entry.get("room-bladesNeeded", 0)) > 0 and entry.get(
                 "room-bladeSpec"
             ):
                 r_line2.append(
-                    f'<span class="spec-label">FanBlade(s):</span> <span class="spec-value">({entry.get("room-bladesNeeded")}) {entry.get("room-bladeSpec")}</span>'
+                    f'<span class="spec-item"><span class="spec-label">FanBlade(s):</span> <span class="spec-value">({entry.get("room-bladesNeeded")}) {entry.get("room-bladeSpec")}</span></span>'
                 )
             elif entry.get("room-bladeSpec"):
                 r_line2.append(
-                    f'<span class="spec-label">FanBlade(s):</span> <span class="spec-value">{entry.get("room-bladeSpec")}</span>'
+                    f'<span class="spec-item"><span class="spec-label">FanBlade(s):</span> <span class="spec-value">{entry.get("room-bladeSpec")}</span></span>'
                 )
             if r_line2:
                 right_lines.append(" | ".join(r_line2))
@@ -134,44 +139,75 @@ def get_project_print_pdf(project_id: str):
 
             return f'<div class="print-room-specs"><div class="spec-column spec-left">{left_html}</div><div class="spec-column spec-right">{right_html}</div></div>'
 
+        # Build compact address string
+        address_parts = [sd.get('street', '')]
+        city_state_zip = []
+        if sd.get('city'):
+            city_state_zip.append(sd.get('city'))
+        if sd.get('state'):
+            city_state_zip.append(sd.get('state'))
+        if sd.get('zip'):
+            city_state_zip.append(sd.get('zip'))
+        if city_state_zip:
+            address_parts.append(', '.join(city_state_zip[:2]) + (' ' + city_state_zip[2] if len(city_state_zip) > 2 else ''))
+        full_address = ', '.join([p for p in address_parts if p])
+        
+        # Contact name and phone as separate items
+        contact_name = sd.get('contact', '')
+        contact_phone = sd.get('phone', '')
+
         html = f"""<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <title>Print View - {customer}</title>
   <style>
-    @page {{ size: letter; margin: 0.5in; }}
-    body {{ font-family: Arial, sans-serif; margin: 16px; color: #333; }}
-    .print-project {{ max-width: 1100px; margin: 0 auto; padding: 10px 16px; }}
-    h1 {{ color: #1e5a99; margin-bottom: 0.5rem; }}
-    h2 {{ color: #2d7bb8; border-bottom: 2px solid #2d7bb8; padding-bottom: 0.25rem; margin-top: 1.5rem; }}
-    .site-info {{ background: #f5f5f5; padding: 0.75rem 1rem; border-radius: 4px; margin-bottom: 1.5rem; }}
-    .site-info p {{ margin: 0.2rem 0; font-size: 0.95rem; }}
-    .print-room {{ border: 1px solid #bbb; border-radius: 4px; padding: 10px 14px; margin-bottom: 12px; page-break-inside: avoid; }}
-    .room-title {{ font-weight: 700; font-size: 1.15rem; color: #1e5a99; margin-bottom: 4px; }}
-    .print-room-mfr {{ font-size: 0.9rem; margin-bottom: 6px; }}
+    @page {{ size: letter; margin: 0.4in 0.5in; }}
+    body {{ font-family: Arial, sans-serif; margin: 0; padding: 8px 16px; color: #333; }}
+    .print-project {{ max-width: 1100px; margin: 0 auto; }}
+    
+    /* Compact Header - Centered */
+    .header {{ background: linear-gradient(135deg, #1e5a99 0%, #2d7bb8 100%); color: white; padding: 12px 16px; border-radius: 4px; margin-bottom: 12px; text-align: center; }}
+    .header-title {{ font-size: 1.35rem; font-weight: 700; margin: 0 0 6px 0; }}
+    .header-row {{ display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 20px; font-size: 0.85rem; opacity: 0.95; }}
+    .header-row span {{ white-space: nowrap; }}
+    .header-row .label {{ opacity: 0.8; }}
+    
+    /* Section Headers */
+    h2 {{ color: #1e5a99; font-size: 1.1rem; border-bottom: 2px solid #2d7bb8; padding-bottom: 3px; margin: 14px 0 10px 0; }}
+    
+    /* Room Cards - more compact */
+    .print-room {{ border: 1px solid #ccc; border-radius: 4px; padding: 8px 12px; margin-bottom: 10px; page-break-inside: avoid; }}
+    .room-title {{ font-weight: 700; font-size: 1.05rem; color: #1e5a99; margin-bottom: 2px; }}
+    .print-room-mfr {{ font-size: 0.85rem; margin-bottom: 4px; }}
     .mfr-label {{ font-weight: 400; color: #777; }}
     .mfr-value {{ font-weight: 400; color: #000; }}
     .spec-label {{ font-weight: 700; color: #000; }}
     .spec-value {{ font-weight: 400; color: #000; }}
-    .print-room-info {{ font-size: 0.85rem; color: #555; margin-bottom: 6px; }}
-    .print-room-specs {{ display: flex; justify-content: space-between; gap: 40px; margin-bottom: 6px; }}
+    .spec-item {{ white-space: nowrap; display: inline-block; }}
+    .print-room-info {{ font-size: 0.8rem; color: #555; margin-bottom: 4px; }}
+    .print-room-specs {{ display: flex; justify-content: space-between; gap: 30px; margin-bottom: 4px; }}
     .spec-column {{ flex: 1; text-align: left; }}
-    .spec-line {{ margin-bottom: 3px; font-size: 0.95rem; color: #333; white-space: normal; line-height: 1.4; }}
-    .print-notes-separator {{ border: 0; border-top: 1px solid #dddddd; margin: 6px 0 4px 0; }}
-    .print-room-notes {{ font-size: 0.9rem; }}
+    .spec-line {{ margin-bottom: 2px; font-size: 0.9rem; color: #333; white-space: normal; line-height: 1.4; }}
+    .print-notes-separator {{ border: 0; border-top: 1px solid #e0e0e0; margin: 5px 0 3px 0; }}
+    .print-room-notes {{ font-size: 0.85rem; line-height: 1.3; }}
     .print-room-notes .notes-label {{ font-weight: 600; }}
-    .print-room-notes .notes-text {{ font-weight: normal; white-space: pre-wrap; color: #555; }}
+    .print-room-notes .notes-text {{ font-weight: normal; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word; color: #555; }}
   </style>
 </head>
 <body>
 <div class="print-project">
-  <h1>{customer}</h1>
-  <div class="site-info">
-    <p><strong>Address:</strong> {sd.get('street', '')}, {sd.get('city', '')}, {sd.get('state', '')} {sd.get('zip', '')}</p>
-    <p><strong>Contact:</strong> {sd.get('contact', '')} {('(' + sd.get('phone') + ')') if sd.get('phone') else ''}</p>
-    <p><strong>Utility:</strong> {sd.get('utility', '')}</p>
-    <p><strong>Date of Site Visit:</strong> {visit_date}</p>
+  <div class="header">
+    <div class="header-title">{customer}</div>
+    <div class="header-row">
+      <span>{full_address}</span>
+      <span><span class="label">Contact:</span> {contact_name or '—'}</span>
+      <span><span class="label">Phone:</span> {contact_phone or '—'}</span>
+    </div>
+    <div class="header-row">
+      <span><span class="label">Utility:</span> {sd.get('utility', '—')}</span>
+      <span><span class="label">Site Visit:</span> {visit_date or '—'}</span>
+    </div>
   </div>
 """
 

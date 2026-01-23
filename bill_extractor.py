@@ -1049,20 +1049,27 @@ def regex_extract_all_fields(raw_text):
     
     # ========== SERVICE ADDRESS ==========
     # Universal patterns - look for labeled addresses and street patterns
+    # IMPORTANT: Patterns must be specific to avoid matching garbage like "Date bil prapated" or "The projected rate"
     address_patterns = [
-        # Labeled SERVICE ADDRESS (most reliable)
-        r"SERVICE\s*ADDRESS[:\-]?\s*(.{10,100})",
-        r"Service\s*Location[:\-]?\s*(.{10,100})",
-        r"Premise\s*(?:Address)?[:\-]?\s*(.{10,100})",
-        r"Property\s*Address[:\-]?\s*(.{10,100})",
-        r"Installation\s*Address[:\-]?\s*(.{10,100})",
-        r"Billing\s*Address[:\-]?\s*(.{10,100})",
-        r"Location[:\-]?\s*(.{10,100})",
+        # Labeled SERVICE ADDRESS followed by street number (most reliable)
+        r"SERVICE\s*ADDRESS[:\-]?\s*(\d{1,5}\s+[A-Z][A-Za-z0-9\s]+(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|RD|ROAD|WAY|LN|LANE|CT|COURT|PL|PLACE|CIR|CIRCLE|TRL|TRAIL|PKWY|PARKWAY)[^\n]{0,50})",
+        r"Service\s*Location[:\-]?\s*(\d{1,5}\s+[A-Z][A-Za-z0-9\s]+(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|RD|ROAD|WAY|LN|LANE|CT|COURT|PL|PLACE)[^\n]{0,50})",
+        r"Premise\s*(?:Address)?[:\-]?\s*(\d{1,5}\s+[A-Z][A-Za-z0-9\s]+(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|RD|ROAD|WAY|LN|LANE|CT|COURT|PL|PLACE)[^\n]{0,50})",
         # Generic US street address with state abbreviation + ZIP
         r"(\d{2,5}\s+[A-Z][A-Za-z\s]+(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|RD|ROAD|WAY|LN|LANE|CT|COURT|PL|PLACE|CIR|CIRCLE|TRL|TRAIL|PKWY|PARKWAY)[,\s]+[A-Z][A-Za-z\s]+[,\s]*(?:CA|NY|TX|FL|IL|PA|OH|GA|NC|MI|NJ|VA|WA|AZ|MA|TN|IN|MO|MD|WI|CO|MN|SC|AL|LA|KY|OR|OK|CT|UT|IA|NV|AR|MS|KS|NM|NE|WV|ID|HI|NH|ME|RI|MT|DE|SD|ND|AK|VT|WY|DC)\s*\d{5}(?:-\d{4})?)",
-        # Street number + name + apt/unit (without full city/state)
+        # Street number + name + street suffix (without full city/state)
         r"(\d{2,5}\s+[A-Z][A-Za-z0-9\s]+(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|RD|ROAD|WAY|LN|LANE|CT|COURT|PL|PLACE)(?:\s*(?:#|APT|UNIT|STE|SUITE)\s*[A-Z0-9]+)?)",
     ]
+    
+    # Common garbage strings that get misidentified as addresses
+    address_skip_patterns = [
+        "APM", "KVARH", "BASE KVARH", "METER NUMBER", "SERVES",
+        "DATE", "BILL", "PREPARED", "PROJECTED", "RATE", "GROUP",
+        "SAN FRANCISCO", "LOS ANGELES", "SAN DIEGO",  # City names without street
+        "ROTATING", "OUTAGE", "SCHEDULE", "CHARGES", "PAYMENT",
+        "CUSTOMER", "ACCOUNT", "SERVICE ACCOUNT"
+    ]
+    
     for pattern in address_patterns:
         match = re.search(pattern, raw_text, re.IGNORECASE)
         if match:
@@ -1071,14 +1078,25 @@ def regex_extract_all_fields(raw_text):
             addr = re.split(r"\n\n|\nPOD-ID|\nBILLING|\nACCOUNT|\nMETER|\nRATE|\nNEXT|\nSERVICE\s*ACCOUNT|\nCUSTOMER", addr, maxsplit=1, flags=re.IGNORECASE)[0].strip()
             # Remove trailing punctuation
             addr = addr.rstrip(',;:.')
-            # Skip if it looks like a meter number (contains APM, kVARH, etc.)
-            if any(skip in addr.upper() for skip in ["APM", "KVARH", "BASE KVARH", "METER NUMBER", "SERVES"]):
+            
+            # Skip if it contains garbage patterns
+            if any(skip in addr.upper() for skip in address_skip_patterns):
+                print(f"[regex_extract] Skipping garbage address: '{addr}'")
                 continue
-            # Must have at least a number and some letters
-            if len(addr) >= 10 and re.search(r'\d', addr) and re.search(r'[A-Za-z]', addr):
+            
+            # CRITICAL: Must start with a street number (1-5 digits)
+            if not re.match(r'^\d{1,5}\s+', addr):
+                print(f"[regex_extract] Skipping address without street number: '{addr}'")
+                continue
+            
+            # Must have at least 10 chars with a street suffix
+            street_suffixes = r"(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|RD|ROAD|WAY|LN|LANE|CT|COURT|PL|PLACE|CIR|CIRCLE|TRL|TRAIL|PKWY|PARKWAY)"
+            if len(addr) >= 10 and re.search(street_suffixes, addr, re.IGNORECASE):
                 result["service_address"] = addr
                 print(f"[regex_extract] service_address: {result['service_address']}")
                 break
+            else:
+                print(f"[regex_extract] Skipping address without street suffix: '{addr}'")
     
     # ========== RATE SCHEDULE ==========
     # Universal patterns for rate schedule/tariff across utilities

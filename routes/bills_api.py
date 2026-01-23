@@ -609,8 +609,9 @@ def process_bill_file(project_id, file_id):
                 'message': 'File is already being processed'
             })
         
-        # Skip if already successfully processed
-        if current_review_status in ('ok', 'needs_review') and file_record.get('processed'):
+        # Skip if already successfully processed (unless force=true)
+        force_reprocess = request.args.get('force', '').lower() in ('true', '1', 'yes')
+        if current_review_status in ('ok', 'needs_review') and file_record.get('processed') and not force_reprocess:
             print(f"[bills] Duplicate extraction request ignored - file {file_id} is already processed")
             return jsonify({
                 'success': True,

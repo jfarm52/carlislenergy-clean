@@ -181,25 +181,47 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
                     rate_schedule = re.sub(r'\s+', ' ', rate_schedule).strip()
                     print(f"[bill_extractor] Rate schedule extracted: {rate_schedule}")
 
-            # Service address extraction
+            # Service address extraction - STRICT patterns to avoid garbage
+            # Address must: start with street number, have street suffix, not contain garbage phrases
             if not service_address or service_address.strip() == "":
                 address_patterns = [
-                    r"SERVICE\s*ADDRESS[:\-]?\s*(.{10,100})",
-                    r"Service\s*Location[:\-]?\s*(.{10,100})",
-                    r"Premise\s*Address[:\-]?\s*(.{10,100})",
-                    r"(\d{2,5}\s+[A-Z][A-Za-z\s]+(?:Street|ST|Avenue|AVE|Boulevard|BLVD|Road|RD|Drive|DR|Lane|LN|Way|WAY|Court|CT|Place|PL|Circle|CIR|Parkway|PKY)[,\s]+[A-Z][A-Za-z\s]+[,\s]+[A-Z]{2}\s*\d{5})",
+                    # Labeled SERVICE ADDRESS followed by street number (most reliable)
+                    r"SERVICE\s*ADDRESS[:\-]?\s*(\d{1,5}\s+[A-Z][A-Za-z0-9\s]+(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|RD|ROAD|WAY|LN|LANE|CT|COURT|PL|PLACE)[^\n]{0,50})",
+                    # Generic street address with full city/state/zip
+                    r"(\d{2,5}\s+[A-Z][A-Za-z\s]+(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|RD|ROAD|WAY|LN|LANE|CT|COURT|PL|PLACE)[,\s]+[A-Z][A-Za-z\s]+[,\s]+[A-Z]{2}\s*\d{5})",
+                    # Street number + name + suffix (without city/state)
+                    r"(\d{2,5}\s+[A-Z][A-Za-z0-9\s]+(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|RD|ROAD|WAY|LN|LANE|CT|COURT|PL|PLACE))",
                 ]
+                # Garbage patterns to skip
+                skip_patterns = ["DATE", "BILL", "PREPARED", "PROJECTED", "RATE", "GROUP", "ROTATING", "OUTAGE", "SCHEDULE"]
+                
                 for pattern in address_patterns:
                     match = re.search(pattern, raw_text, re.IGNORECASE)
                     if match:
                         addr_text = match.group(1)
-                        addr_text = re.split(r"\n|POD-ID|BILLING|ACCOUNT|METER|RATE", addr_text, maxsplit=1)[0]
-                        service_address = addr_text.strip()
+                        addr_text = re.split(r"\n|POD-ID|BILLING|ACCOUNT|METER|RATE", addr_text, maxsplit=1)[0].strip()
+                        
+                        # Skip if contains garbage
+                        if any(skip in addr_text.upper() for skip in skip_patterns):
+                            print(f"[bill_extractor] Skipping garbage address: '{addr_text}'")
+                            continue
+                        
+                        # Must start with street number
+                        if not re.match(r'^\d{1,5}\s+', addr_text):
+                            print(f"[bill_extractor] Skipping address without street number: '{addr_text}'")
+                            continue
+                        
+                        service_address = addr_text
                         print(f"[bill_extractor] Regex extracted service_address: {service_address}")
                         break
+                        
                 if (not service_address or service_address.strip() == "") and service_address_original:
-                    service_address = service_address_original
-                    print(f"[bill_extractor] Keeping original service_address: {service_address}")
+                    # Only keep original if it passes validation
+                    if re.match(r'^\d{1,5}\s+', service_address_original) and not any(s in service_address_original.upper() for s in skip_patterns):
+                        service_address = service_address_original
+                        print(f"[bill_extractor] Keeping original service_address: {service_address}")
+                    else:
+                        print(f"[bill_extractor] Rejecting invalid original address: '{service_address_original}'")
 
         period_start = get_val("billing_period_start")
         period_end = get_val("billing_period_end")
