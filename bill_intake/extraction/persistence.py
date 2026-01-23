@@ -160,6 +160,15 @@ def save_bill_to_normalized_tables(file_id, project_id, extracted_data):
             service_address = ""
 
         raw_text = extracted_data.get("_raw_text", "")
+        
+        # Normalize raw_text for consistent regex matching
+        # Import and apply the same normalization used in bill_extractor
+        if raw_text:
+            try:
+                from bill_extractor import normalize_ocr_text
+                raw_text = normalize_ocr_text(raw_text)
+            except ImportError:
+                pass  # If import fails, use raw text as-is
 
         if raw_text:
             import re

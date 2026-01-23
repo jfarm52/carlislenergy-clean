@@ -738,6 +738,100 @@ def extract_with_multi_location_validation(raw_text, patterns_with_confidence, f
     return highest_single["value"], highest_single["source"], candidates
 
 
+def normalize_ocr_text(text):
+    """
+    Normalize OCR text to handle common variations and artifacts.
+    This makes pattern matching MUCH more robust across different utilities and OCR engines.
+    
+    Handles:
+    - Unicode dash variants (en-dash, em-dash, etc.) → standard hyphen
+    - Smart quotes → standard quotes
+    - Various space characters → standard space
+    - Common OCR artifacts
+    - Ligatures and special characters
+    """
+    if not text:
+        return text
+    
+    # === DASH NORMALIZATION ===
+    # Convert ALL Unicode dash variants to standard hyphen
+    dash_chars = [
+        '\u2010',  # HYPHEN
+        '\u2011',  # NON-BREAKING HYPHEN
+        '\u2012',  # FIGURE DASH
+        '\u2013',  # EN DASH
+        '\u2014',  # EM DASH
+        '\u2015',  # HORIZONTAL BAR
+        '\u2212',  # MINUS SIGN
+        '\uFE58',  # SMALL EM DASH
+        '\uFE63',  # SMALL HYPHEN-MINUS
+        '\uFF0D',  # FULLWIDTH HYPHEN-MINUS
+    ]
+    for dash in dash_chars:
+        text = text.replace(dash, '-')
+    
+    # === QUOTE NORMALIZATION ===
+    # Convert smart quotes to standard quotes
+    quote_map = {
+        '\u2018': "'",  # LEFT SINGLE QUOTATION MARK
+        '\u2019': "'",  # RIGHT SINGLE QUOTATION MARK
+        '\u201A': "'",  # SINGLE LOW-9 QUOTATION MARK
+        '\u201B': "'",  # SINGLE HIGH-REVERSED-9 QUOTATION MARK
+        '\u201C': '"',  # LEFT DOUBLE QUOTATION MARK
+        '\u201D': '"',  # RIGHT DOUBLE QUOTATION MARK
+        '\u201E': '"',  # DOUBLE LOW-9 QUOTATION MARK
+        '\u201F': '"',  # DOUBLE HIGH-REVERSED-9 QUOTATION MARK
+        '\u2032': "'",  # PRIME
+        '\u2033': '"',  # DOUBLE PRIME
+        '\u00AB': '"',  # LEFT-POINTING DOUBLE ANGLE QUOTATION MARK
+        '\u00BB': '"',  # RIGHT-POINTING DOUBLE ANGLE QUOTATION MARK
+    }
+    for old, new in quote_map.items():
+        text = text.replace(old, new)
+    
+    # === SPACE NORMALIZATION ===
+    # Convert various space characters to standard space
+    space_chars = [
+        '\u00A0',  # NO-BREAK SPACE
+        '\u2000',  # EN QUAD
+        '\u2001',  # EM QUAD
+        '\u2002',  # EN SPACE
+        '\u2003',  # EM SPACE
+        '\u2004',  # THREE-PER-EM SPACE
+        '\u2005',  # FOUR-PER-EM SPACE
+        '\u2006',  # SIX-PER-EM SPACE
+        '\u2007',  # FIGURE SPACE
+        '\u2008',  # PUNCTUATION SPACE
+        '\u2009',  # THIN SPACE
+        '\u200A',  # HAIR SPACE
+        '\u202F',  # NARROW NO-BREAK SPACE
+        '\u205F',  # MEDIUM MATHEMATICAL SPACE
+        '\u3000',  # IDEOGRAPHIC SPACE
+    ]
+    for space in space_chars:
+        text = text.replace(space, ' ')
+    
+    # === COMMON OCR ARTIFACTS ===
+    # Fix common OCR misreads
+    import re
+    
+    # Multiple spaces → single space (but preserve newlines)
+    text = re.sub(r'[ \t]+', ' ', text)
+    
+    # "$ 1,234.56" → "$1,234.56" (remove space after dollar sign)
+    text = re.sub(r'\$\s+', '$', text)
+    
+    # Fix OCR artifacts in numbers: "1,2 34.56" → "1,234.56"
+    # But be careful not to break valid text
+    text = re.sub(r'(\d),\s+(\d)', r'\1,\2', text)
+    
+    # Common letter/number OCR confusions in meter numbers:
+    # "O" sometimes read as "0", "l" as "1", etc.
+    # We handle this by being flexible in patterns rather than replacing
+    
+    return text
+
+
 def regex_extract_all_fields(raw_text):
     """
     Extract ALL bill fields using regex patterns BEFORE calling AI.
@@ -746,6 +840,10 @@ def regex_extract_all_fields(raw_text):
     Returns dict with extracted fields and service_type detection.
     """
     import re
+    
+    # === NORMALIZE TEXT FIRST ===
+    # This is CRITICAL for handling OCR variations across different utilities
+    raw_text = normalize_ocr_text(raw_text)
     
     result = {
         "success": False,
@@ -1354,72 +1452,58 @@ def regex_extract_all_fields(raw_text):
     # - "New charges" / "Current charges" = highest (current period only)
     # - "Total charges" = high confidence
     # - "Amount due" = lower (may include past due/late fees)
+    # ========== TOTAL AMOUNT EXTRACTION ==========
+    # NOTE: Text is already normalized (spaces, dashes, quotes standardized)
+    # 
+    # KEY INSIGHT: We want the FINAL TOTAL, not subtotals.
+    # SCE bills have: "Subtotal of your new charges $20,219.94" then "Your new charges $20,249.89"
+    # We want the SECOND one (includes taxes).
+    #
+    # Strategy: High confidence for explicit "Your new charges" / "Total amount due"
+    #           Lower confidence for generic patterns that might catch subtotals
+    
     amount_patterns_with_confidence = [
-        # ===== UNIVERSAL "NEW/CURRENT CHARGES" (HIGHEST CONFIDENCE) =====
-        # These patterns work across ALL utilities for current period charges
-        (r"(?:Total\s*)?[Nn]ew\s+[Cc]harges[:\s]*\$?\s*([\d,]+\.\d{2})", "new_charges_generic", 0.98),
-        (r"(?:Total\s*)?Current\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "current_charges", 0.96),
-        (r"This\s*(?:Month|Period)(?:'s)?\s*Charges?[:\s]*\$?\s*([\d,]+\.\d{2})", "this_period_charges", 0.95),
-        (r"Total\s*Electric\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "total_electric_charges", 0.94),
-        (r"Electric\s*Charges\s*Total[:\s]*\$?\s*([\d,]+\.\d{2})", "electric_charges_total", 0.94),
-        (r"Total\s*Charges\s*This\s*Period[:\s]*\$?\s*([\d,]+\.\d{2})", "total_this_period", 0.94),
-        (r"\$([\d,]+\.\d{2})\s+Total\s*(?:Charges)?$", "dollar_total_suffix", 0.90),
+        # ===== EXPLICIT FINAL TOTALS (HIGHEST CONFIDENCE) =====
+        # These are almost always the final amount including all taxes/fees
+        (r"Your\s+new\s+charges\s+\$?([\d,]+\.\d{2})", "sce_your_new_charges", 1.0),
+        (r"Total\s+amount\s+you\s+owe[^$\d]*\$?([\d,]+\.\d{2})", "total_amount_owe", 0.98),
+        (r"Amount\s+due\s+\$?([\d,]+\.\d{2})", "amount_due_explicit", 0.97),
+        (r"Total\s+due\s+\$?([\d,]+\.\d{2})", "total_due_explicit", 0.97),
+        (r"Pay\s+this\s+amount[:\s]*\$?([\d,]+\.\d{2})", "pay_this_amount", 0.96),
+        (r"Please\s+pay\s+\$?([\d,]+\.\d{2})", "please_pay", 0.96),
         
-        # ===== SCE SPECIFIC (HIGH CONFIDENCE) =====
-        (r"Your\s+new\s+charges\s+\$\s*([\d,]+\.\d{2})", "sce_new_charges_exact", 1.0),
-        (r"Your\s+new\s+charges[:\s]*\$?\s*([\d,]+\.\d{2})", "sce_new_charges", 0.98),
+        # ===== UTILITY-SPECIFIC FINAL TOTALS =====
+        (r"Total\s+Amount\s+Due\s*\$?([\d,]+\.\d{2})", "total_amount_due", 0.96),
+        (r"Total\s+Electric\s+Charges[:\s]*\$?([\d,]+\.\d{2})", "total_electric_charges", 0.94),
+        (r"Total\s+Charges[:\s]*\$?([\d,]+\.\d{2})", "total_charges", 0.93),
+        (r"Current\s+Charges[:\s]*\$?([\d,]+\.\d{2})", "current_charges", 0.92),
+        (r"This\s+(?:Month|Period)(?:'s)?\s+Charges?[:\s]*\$?([\d,]+\.\d{2})", "this_period_charges", 0.91),
         
-        # ===== PG&E SPECIFIC (HIGH CONFIDENCE) =====
-        # PG&E: "Total amount due" or "Electric charges $X"
-        (r"Electric\s*[Cc]harges[:\s]*\$?\s*([\d,]+\.\d{2})", "pge_electric_charges", 0.94),
-        (r"Gas\s*[Cc]harges[:\s]*\$?\s*([\d,]+\.\d{2})", "pge_gas_charges", 0.94),
-        (r"Total\s*Energy\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "pge_energy_charges", 0.92),
-        (r"Your\s*Total\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "pge_your_total", 0.90),
+        # ===== PG&E / SDG&E / LADWP SPECIFIC =====
+        (r"Electric\s+Charges[:\s]*\$?([\d,]+\.\d{2})", "electric_charges", 0.90),
+        (r"Gas\s+Charges[:\s]*\$?([\d,]+\.\d{2})", "gas_charges", 0.90),
+        (r"Total\s+Energy\s+Charges[:\s]*\$?([\d,]+\.\d{2})", "total_energy", 0.90),
+        (r"Power\s+Charges[:\s]*\$?([\d,]+\.\d{2})", "power_charges", 0.88),
+        (r"Utility\s+Charges[:\s]*\$?([\d,]+\.\d{2})", "utility_charges", 0.88),
+        (r"Service\s+Charges[:\s]*\$?([\d,]+\.\d{2})", "service_charges", 0.85),
         
-        # ===== SDG&E SPECIFIC (HIGH CONFIDENCE) =====
-        (r"Total\s*Electricity\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "sdge_electricity_charges", 0.94),
-        (r"Bundled\s*Service\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "sdge_bundled", 0.92),
-        (r"Electric\s*Commodity[:\s]*\$?\s*([\d,]+\.\d{2})", "sdge_commodity", 0.88),
+        # ===== GENERIC PATTERNS (LOWER CONFIDENCE) =====
+        # These might catch subtotals, so lower priority
+        (r"New\s+Charges[:\s]*\$?([\d,]+\.\d{2})", "new_charges_generic", 0.80),
+        (r"Balance\s+Due[:\s]*\$?([\d,]+\.\d{2})", "balance_due", 0.75),
+        (r"(?:Your|This)\s+Bill[:\s]*\$?([\d,]+\.\d{2})", "your_bill", 0.70),
+        (r"Total\s+Bill[:\s]*\$?([\d,]+\.\d{2})", "total_bill", 0.70),
+        (r"\$?([\d,]+\.\d{2})\s+Total$", "dollar_total_suffix", 0.65),
         
-        # ===== LADWP SPECIFIC (HIGH CONFIDENCE) =====
-        (r"Total\s*Amount\s*Due\s*\$\s*([\d,]+\.\d{2})", "ladwp_total_due", 0.92),
-        (r"Electric\s*Service\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "ladwp_electric_service", 0.92),
-        (r"Power\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "ladwp_power_charges", 0.90),
-        
-        # ===== CITY OF VERNON SPECIFIC =====
-        (r"Electric\s*Service[:\s]*\$?\s*([\d,]+\.\d{2})", "vernon_electric_service", 0.92),
-        (r"Utility\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "vernon_utility_charges", 0.90),
-        (r"Municipal\s*Electric[:\s]*\$?\s*([\d,]+\.\d{2})", "vernon_municipal", 0.90),
-        
-        # ===== RPU (RIVERSIDE PUBLIC UTILITIES) SPECIFIC =====
-        (r"Electric\s*Service\s*Charge[:\s]*\$?\s*([\d,]+\.\d{2})", "rpu_electric_service", 0.92),
-        (r"Total\s*Utility\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "rpu_utility_charges", 0.92),
-        (r"Residential\s*Electric[:\s]*\$?\s*([\d,]+\.\d{2})", "rpu_residential", 0.90),
-        (r"Commercial\s*Electric[:\s]*\$?\s*([\d,]+\.\d{2})", "rpu_commercial", 0.90),
-        
-        # ===== GENERIC UTILITY PATTERNS (MEDIUM-HIGH CONFIDENCE) =====
-        (r"Total\s*Gas\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "total_gas_charges", 0.90),
-        (r"Service\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "service_charges", 0.85),
-        (r"Delivery\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "delivery_charges", 0.82),
-        (r"Supply\s*Charges[:\s]*\$?\s*([\d,]+\.\d{2})", "supply_charges", 0.82),
-        
-        # ===== AMOUNT DUE PATTERNS (MEDIUM CONFIDENCE - may include past due) =====
-        (r"Amount\s+due\s+\$\s*([\d,]+\.\d{2})", "amount_due_exact", 0.70),
-        (r"Amount\s+due\s*\$?([\d,]+\.\d{2})", "amount_due", 0.68),
-        (r"Total\s+amount\s+you\s+owe\s+by\s+\d{1,2}/\d{1,2}/\d{2,4}\s+\$?\s*([\d,]+\.\d{2})", "total_owe_by_date", 0.65),
-        (r"Total\s+amount\s+you\s+owe[\s\S]{0,30}?\$\s*([\d,]+\.\d{2})", "total_owe", 0.62),
-        (r"Total\s*Amount\s*You\s*Owe[:\s]*\$?\s*([\d,]+\.\d{2})", "total_amount_owe", 0.60),
-        (r"Please\s*Pay[:\s]*\$?\s*([\d,]+\.\d{2})", "please_pay", 0.58),
-        (r"Pay\s*This\s*Amount[:\s]*\$?\s*([\d,]+\.\d{2})", "pay_this_amount", 0.58),
-        
-        # ===== GENERIC TOTAL/DUE (LOWER CONFIDENCE) =====
-        (r"Total\s*(?:Due|Owed)[:\s]*\$?\s*([\d,]+\.\d{2})", "total_due", 0.55),
-        (r"(?:Total\s*)?Amount\s*Due[:\s]*\$?\s*([\d,]+\.\d{2})", "amount_due_generic", 0.52),
-        (r"(?:Total\s*)?Balance\s*Due[:\s]*\$?\s*([\d,]+\.\d{2})", "balance_due", 0.50),
-        (r"(?:Your|This)\s*Bill[:\s]*\$?\s*([\d,]+\.\d{2})", "your_bill", 0.48),
-        (r"Total\s*Bill[:\s]*\$?\s*([\d,]+\.\d{2})", "total_bill", 0.48),
-        (r"Statement\s*Balance[:\s]*\$?\s*([\d,]+\.\d{2})", "statement_balance", 0.45),
-        (r"(?:total|due)[:\s]*\$\s*([\d,]+\.\d{2})", "generic_total_due", 0.40),
+        # ===== ADDITIONAL UTILITY-SPECIFIC (MEDIUM CONFIDENCE) =====
+        (r"Total\s+Electricity\s+Charges[:\s]*\$?([\d,]+\.\d{2})", "total_electricity", 0.88),
+        (r"Bundled\s+Service\s+Charges[:\s]*\$?([\d,]+\.\d{2})", "bundled_service", 0.85),
+        (r"Electric\s+Commodity[:\s]*\$?([\d,]+\.\d{2})", "electric_commodity", 0.82),
+        (r"Total\s+Gas\s+Charges[:\s]*\$?([\d,]+\.\d{2})", "total_gas", 0.85),
+        (r"Delivery\s+Charges[:\s]*\$?([\d,]+\.\d{2})", "delivery_charges", 0.80),
+        (r"Supply\s+Charges[:\s]*\$?([\d,]+\.\d{2})", "supply_charges", 0.80),
+        (r"Statement\s+Balance[:\s]*\$?([\d,]+\.\d{2})", "statement_balance", 0.60),
+        (r"(?:total|due)[:\s]*\$?([\d,]+\.\d{2})", "generic_total_due", 0.50),
     ]
     
     # Use multi-location validation to get the best amount value
@@ -1478,36 +1562,50 @@ def regex_extract_all_fields(raw_text):
     #
     # Also seen: E-1234567, 12345678, etc.
     
+    # ========== METER NUMBER ==========
+    # NOTE: Text is already normalized - all Unicode dashes are now standard hyphens
+    # This makes patterns MUCH simpler and more reliable
+    
     meter_patterns = [
-        # ===== SCE METER FORMAT (HIGHEST PRIORITY) =====
-        # SCE: "For meter V349N-002081" - letter + digits + letter + hyphen + digits
-        r"[Ff]or\s*meter\s+([A-Z]\d{3}[A-Z][\-]\d{6})",
-        # SCE: "meter V349N-002081" anywhere
-        r"\bmeter\s+([A-Z]\d{3}[A-Z][\-]\d{6})",
-        # SCE standalone meter ID: V###X-###### format
-        r"\b([A-Z]\d{3}[A-Z][\-]\d{6})\b",
-        # SCE: E-####### or similar with E prefix
-        r"\b(E[\-]\d{7,10})\b",
+        # ===== SCE NUMERIC FORMAT (HIGHEST PRIORITY) =====
+        # SCE: "For meter 359150-008352 from 10/03/25 to 11/02/25"
+        # Format: 5-7 digits + hyphen + 5-7 digits
+        r"[Ff]or\s+meter\s+(\d{5,7}-\d{5,7})\s+from",
+        r"\bmeter\s+(\d{5,7}-\d{5,7})\b",
         
-        # ===== LADWP METER FORMAT =====
-        r"(APM[A-Z0-9]{2,5}[\-][0-9\-]{8,15})",
+        # ===== SCE ALPHANUMERIC FORMAT =====
+        # "For meter V349N-002081" - letter + digits + letter + hyphen + digits
+        r"[Ff]or\s+meter\s+([A-Z]\d{2,4}[A-Z]-\d{5,7})",
+        r"\bmeter\s+([A-Z]\d{2,4}[A-Z]-\d{5,7})",
+        r"\b([A-Z]\d{2,4}[A-Z]-\d{5,7})\b",
         
-        # ===== GENERIC LABELED PATTERNS =====
-        # "METER NUMBER: V349N-002081" or "Meter #: 12345678"
-        r"METER\s*(?:NUMBER|#|NO\.?|ID)[\s:]+([A-Z0-9][\-A-Z0-9]{4,20})",
-        r"Meter\s*(?:#|No\.?|Number|ID)[:\s]+([A-Z0-9][\-A-Z0-9]{4,20})",
-        # Electric Meter
-        r"Electric\s*Meter[:\s]+([A-Z0-9][\-A-Z0-9]{4,20})",
-        # Meter Serial Number
-        r"Meter\s*Serial[:\s]+([A-Z0-9][\-A-Z0-9]{4,20})",
-        # Service Point ID
-        r"Service\s*Point\s*(?:ID|#)?[:\s]+([A-Z0-9][\-A-Z0-9]{4,20})",
+        # SCE: E-####### format
+        r"\b(E-\d{6,10})\b",
         
-        # ===== NUMERIC ONLY (LOWER PRIORITY) =====
-        # "Meter: 12345678" - pure numeric
+        # ===== GENERIC ALPHANUMERIC WITH HYPHEN (FLEXIBLE) =====
+        # Matches most utility meter formats: letters/numbers with hyphen
+        # e.g., "APM12345-67890", "M123-456789", "359150-008352"
+        r"[Ff]or\s+meter\s+([A-Z0-9]{3,8}-[A-Z0-9]{4,10})",
+        r"\bmeter\s+([A-Z0-9]{3,8}-[A-Z0-9]{4,10})\b",
+        
+        # ===== LADWP FORMAT =====
+        r"(APM[A-Z0-9]{2,6}-[0-9-]{6,15})",
+        
+        # ===== LABELED PATTERNS (ANY UTILITY) =====
+        # "METER NUMBER: XXXXX" or "Meter #: XXXXX"
+        r"METER\s*(?:NUMBER|#|NO\.?|ID)[\s:]+([A-Z0-9][A-Z0-9-]{4,20})",
+        r"Meter\s*(?:#|No\.?|Number|ID)[:\s]+([A-Z0-9][A-Z0-9-]{4,20})",
+        r"Electric\s*Meter[:\s]+([A-Z0-9][A-Z0-9-]{4,20})",
+        r"Meter\s*Serial[:\s]+([A-Z0-9][A-Z0-9-]{4,20})",
+        r"Service\s*Point\s*(?:ID|#)?[:\s]+([A-Z0-9][A-Z0-9-]{4,20})",
+        
+        # ===== PURE NUMERIC (LOWER PRIORITY) =====
         r"\bMeter[:\s]+(\d{6,15})\b",
-        # METER NUMBER followed by numeric
         r"METER\s*(?:NUMBER|#|NO\.?|ID)[:\s]+(\d{6,15})",
+        
+        # ===== STANDALONE NUMERIC-HYPHEN-NUMERIC (FALLBACK) =====
+        # Last resort: any ###-### pattern that looks like a meter
+        r"\b(\d{5,7}-\d{5,7})\b",
     ]
     
     for pattern in meter_patterns:
