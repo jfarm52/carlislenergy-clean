@@ -300,12 +300,40 @@ def upload_csv():
         
         dbx = get_dbx()
         
-        # ===== SITEWALK EXPORTS UPLOAD (existing behavior) =====
+        # ===== SITEWALK EXPORTS UPLOAD (full structure matching Pending Proposals) =====
         print(f"[export] Start export | customer=\"{company}\" | device=\"{device}\"")
         
-        company_folder_name = sanitize_name(company)
-        sitewalk_company_folder = f"{BASE_PATH}/{company_folder_name}"
-        sitewalk_file_path = f"{sitewalk_company_folder}/{filename}"
+        sw_company = sanitize_name(company)
+        sw_street = sanitize_name(street_address)
+        sw_utility = utility.upper() if utility else "UNKNOWN"
+        
+        # Extract date from filename for folder naming
+        parts = filename.split('_')
+        if len(parts) >= 2:
+            old_date_str = parts[-2]
+            try:
+                old_date = datetime.datetime.strptime(old_date_str, "%m.%d.%y")
+                sw_date_part = format_date_no_leading_zeros(old_date)
+            except:
+                sw_date_part = format_date_no_leading_zeros(datetime.datetime.utcnow())
+        else:
+            sw_date_part = format_date_no_leading_zeros(datetime.datetime.utcnow())
+        
+        # Build full folder structure matching Pending Proposals
+        sitewalk_company_folder = f"{BASE_PATH}/{sw_company}"
+        sitewalk_address_folder = f"{sitewalk_company_folder}/{sw_street}_{sw_utility}"
+        sitewalk_customer_docs = f"{sitewalk_company_folder}/Customer Docs"
+        sitewalk_old = f"{sitewalk_company_folder}/Old"
+        sitewalk_perf_guarantee = f"{sitewalk_company_folder}/Performance guarantee"
+        sitewalk_photos = f"{sitewalk_address_folder}/Photos_{sw_date_part}"
+        sitewalk_evaps = f"{sitewalk_photos}/Evaporators"
+        sitewalk_conds = f"{sitewalk_photos}/Condensers"
+        
+        # CSV file goes in the address folder (same as Pending Proposals)
+        sitewalk_file_path = f"{sitewalk_address_folder}/{filename}"
+        
+        # Extract evaporator and condenser names for subfolder creation
+        evap_names, cond_names = extract_evap_cond_names(data)
         
         # Check if SiteWalk file already exists (retry detection)
         sitewalk_file_exists = check_file_exists(dbx, sitewalk_file_path)
@@ -313,18 +341,42 @@ def upload_csv():
         if not sitewalk_file_exists:
             print(f"[dropbox] Uploading to SiteWalk Exports: {sitewalk_file_path}")
             
-            # Create company folder
+            # Create full folder structure (matching Pending Proposals)
+            sw_folders_to_create = [
+                sitewalk_company_folder,
+                sitewalk_address_folder,
+                sitewalk_customer_docs,
+                sitewalk_old,
+                sitewalk_perf_guarantee,
+                sitewalk_photos,
+                sitewalk_evaps,
+                sitewalk_conds
+            ]
+            
+            # Add per-room folders for evaporators
+            for evap_name in evap_names:
+                safe_evap = sanitize_name(evap_name)
+                if safe_evap:
+                    sw_folders_to_create.append(f"{sitewalk_evaps}/{safe_evap}")
+            
+            # Add per-room folders for condensers
+            for cond_name in cond_names:
+                safe_cond = sanitize_name(cond_name)
+                if safe_cond:
+                    sw_folders_to_create.append(f"{sitewalk_conds}/{safe_cond}")
+            
             try:
-                create_folder_idempotent(dbx, sitewalk_company_folder)
+                for folder in sw_folders_to_create:
+                    create_folder_idempotent(dbx, folder)
             except Exception as e:
-                print(f"[dropbox] ERROR creating SiteWalk company folder: {e}")
+                print(f"[dropbox] ERROR creating SiteWalk folder structure: {e}")
                 return jsonify({
                     "ok": False,
                     "sitewalk": sitewalk_result,
                     "pending": pending_result
                 }), 500
             
-            # Upload to SiteWalk Exports
+            # Upload CSV to SiteWalk Exports
             try:
                 dbx.files_upload(
                     data,
@@ -610,12 +662,13 @@ def upload_photo():
         pp_street = sanitize_name(street_address)
         
         # Determine base path based on utility presence
+        sw_utility = utility.upper() if utility else "UNKNOWN"
         if utility_folder_name:
             # Normal path: PP_ROOT/<utility>/<company>/<address_utility>/Photos_<date>
-            base_path = f"{PP_ROOT}/{utility_folder_name}/{pp_company}/{pp_street}_{utility.upper()}/Photos_{date_part}"
+            base_path = f"{PP_ROOT}/{utility_folder_name}/{pp_company}/{pp_street}_{sw_utility}/Photos_{date_part}"
         else:
-            # Fallback path: BASE_PATH/<company>/<address>/Photos_<date>
-            base_path = f"{BASE_PATH}/{pp_company}/{pp_street}/Photos_{date_part}"
+            # Fallback path: BASE_PATH/<company>/<address_utility>/Photos_<date> (matching new SiteWalk structure)
+            base_path = f"{BASE_PATH}/{pp_company}/{pp_street}_{sw_utility}/Photos_{date_part}"
         
         # Determine subfolder based on assignment
         if room_name and room_name.strip() and section:
@@ -716,11 +769,13 @@ def upload_photos_batch():
         
         pp_company = sanitize_name(company)
         pp_street = sanitize_name(street_address)
+        batch_utility = utility.upper() if utility else "UNKNOWN"
         
         if utility_folder_name:
-            base_path = f"{PP_ROOT}/{utility_folder_name}/{pp_company}/{pp_street}_{utility.upper()}/Photos_{date_part}"
+            base_path = f"{PP_ROOT}/{utility_folder_name}/{pp_company}/{pp_street}_{batch_utility}/Photos_{date_part}"
         else:
-            base_path = f"{BASE_PATH}/{pp_company}/{pp_street}/Photos_{date_part}"
+            # Fallback: SiteWalk Exports with same structure
+            base_path = f"{BASE_PATH}/{pp_company}/{pp_street}_{batch_utility}/Photos_{date_part}"
         
         # Create base folders
         for folder in [f"{base_path}/Evaporators", f"{base_path}/Condensers", f"{base_path}/Unassigned"]:
