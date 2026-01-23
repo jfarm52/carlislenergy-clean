@@ -92,6 +92,8 @@ class JobQueue:
             max_workers=max_workers,
             thread_name_prefix='bill_processor'
         )
+        print(f"[JobQueue] Initialized with {max_workers} concurrent workers")
+        logger.info(f"[JobQueue] Initialized with {max_workers} workers")
         self._jobs: Dict[int, JobStatus] = {}
         self._futures: Dict[int, Future] = {}
         self._lock = threading.Lock()

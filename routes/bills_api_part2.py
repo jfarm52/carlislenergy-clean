@@ -479,6 +479,67 @@ def register(*, bills_bp, is_enabled, populate_normalized_tables):
             print(f"[bills] Error deleting file: {e}")
             return jsonify({"success": False, "error": str(e)}), 500
 
+    @bills_bp.route("/api/projects/<project_id>/bills/files/batch-delete", methods=["POST"])
+    def batch_delete_bill_files(project_id):
+        """Delete multiple bill files in a single request (much faster than individual deletes)."""
+        if not is_enabled():
+            return jsonify({"error": "Bills feature is disabled"}), 403
+
+        try:
+            data = request.get_json() or {}
+            file_ids = data.get("file_ids", [])
+            
+            if not file_ids:
+                return jsonify({"success": False, "error": "No file_ids provided"}), 400
+            
+            deleted_count = 0
+            errors = []
+            
+            # Use a single connection for all operations (faster)
+            conn = get_connection()
+            try:
+                with conn.cursor() as cur:
+                    for file_id in file_ids:
+                        try:
+                            # Delete TOU periods first (foreign key constraint)
+                            cur.execute("""
+                                DELETE FROM bill_tou_periods 
+                                WHERE bill_id IN (SELECT id FROM bills WHERE bill_file_id = %s)
+                            """, (file_id,))
+                            
+                            # Delete bills
+                            cur.execute("DELETE FROM bills WHERE bill_file_id = %s", (file_id,))
+                            
+                            # Delete the file record
+                            cur.execute("DELETE FROM utility_bill_files WHERE id = %s", (file_id,))
+                            
+                            if cur.rowcount > 0:
+                                deleted_count += 1
+                        except Exception as e:
+                            errors.append({"file_id": file_id, "error": str(e)})
+                    
+                    # Commit all deletes at once
+                    conn.commit()
+                    
+                    # Cleanup empty accounts (single call at the end)
+                    if project_id:
+                        delete_all_empty_accounts(project_id)
+                        
+            finally:
+                conn.close()
+            
+            print(f"[bills] Batch deleted {deleted_count}/{len(file_ids)} files for project {project_id}")
+            
+            return jsonify({
+                "success": len(errors) == 0,
+                "deleted_count": deleted_count,
+                "total_requested": len(file_ids),
+                "errors": errors if errors else None
+            })
+        except Exception as e:
+            print(f"[bills] Error in batch delete: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
+
     @bills_bp.route("/api/projects/<project_id>/bills/grouped", methods=["GET"])
     def get_project_bills_grouped(project_id):
         """Get all bill data grouped by account and meter for UI display."""

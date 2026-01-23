@@ -11932,27 +11932,31 @@
                     });
                     if (!confirmed) return;
 
+                    // Use batch delete for much faster deletion (single request instead of N requests)
                     let deleted = 0;
                     let failed = 0;
-                    for (const fileId of fileIds) {
-                        console.log(`[embeddedBills] Deleting file ${fileId}...`);
-                        try {
-                            const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/files/${fileId}`, { method: 'DELETE' });
-                            const result = await resp.json();
-                            console.log(`[embeddedBills] Delete response for ${fileId}:`, result);
-                            if (result.success) {
-                                deleted++;
-                                console.log(`[embeddedBills] Deleted count now: ${deleted}`);
-                                const row = document.querySelector(`.embedded-bill-file-row[data-file-id="${fileId}"]`);
-                                if (row) row.remove();
-                            } else {
-                                failed++;
-                                console.error('[embeddedBills] Delete failed:', result.error);
-                            }
-                        } catch (err) {
-                            failed++;
-                            console.error('[embeddedBills] Delete error:', err);
-                        }
+                    
+                    console.log(`[embeddedBills] Batch deleting ${fileIds.length} files...`);
+                    try {
+                        const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/files/batch-delete`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ file_ids: fileIds.map(id => parseInt(id, 10)) })
+                        });
+                        const result = await resp.json();
+                        console.log(`[embeddedBills] Batch delete response:`, result);
+                        
+                        deleted = result.deleted_count || 0;
+                        failed = (result.total_requested || fileIds.length) - deleted;
+                        
+                        // Remove deleted rows from UI
+                        fileIds.forEach(fileId => {
+                            const row = document.querySelector(`.embedded-bill-file-row[data-file-id="${fileId}"]`);
+                            if (row) row.remove();
+                        });
+                    } catch (err) {
+                        console.error('[embeddedBills] Batch delete error:', err);
+                        failed = fileIds.length;
                     }
 
                     console.log(`[embeddedBills] Final counts - deleted: ${deleted}, failed: ${failed}`);
