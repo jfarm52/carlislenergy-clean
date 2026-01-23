@@ -10800,10 +10800,16 @@
                     container.innerHTML = `
                         <div class="embedded-bills-upload">
                             <p style="color: #666; margin-bottom: 1rem;">📤 Upload PDF utility bills to extract account, meter, and usage data automatically.</p>
-                            <input type="file" id="embeddedBillFileInput" accept=".pdf,image/*" multiple style="display:none;">
-                            <button id="embeddedBillUploadBtn" class="button primary" style="font-size: 1rem; padding: 0.75rem 1.5rem;">
-                                📤 Upload Electric Bills
-                            </button>
+                            <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
+                                <input type="file" id="embeddedBillFileInput" accept=".pdf,image/*" multiple style="display:none;">
+                                <button id="embeddedBillUploadBtn" class="button primary" style="font-size: 1rem; padding: 0.75rem 1.5rem;">
+                                    📤 Upload Electric Bills
+                                </button>
+                                <input type="file" id="embeddedBillCsvInput" accept=".csv" style="display:none;">
+                                <button id="embeddedBillImportCsvBtn" class="button secondary" style="font-size: 1rem; padding: 0.75rem 1.5rem;">
+                                    📥 Import from CSV
+                                </button>
+                            </div>
                             <div id="embeddedBillUploadStatus" style="margin-top: 1rem;"></div>
                             <div id="embeddedBillProgressContainer" class="bills-progress-container" style="display: none; margin-top: 1rem;">
                                 <div class="bills-progress-bar">
@@ -10824,6 +10830,18 @@
                             const filesArray = Array.from(e.target.files);
                             e.target.value = '';
                             handleEmbeddedBillUpload(filesArray);
+                        };
+                    }
+                    
+                    // Wire up CSV import button
+                    const csvImportBtn = document.getElementById('embeddedBillImportCsvBtn');
+                    const csvInput = document.getElementById('embeddedBillCsvInput');
+                    if (csvImportBtn && csvInput) {
+                        csvImportBtn.onclick = () => csvInput.click();
+                        csvInput.onchange = (e) => {
+                            const file = e.target.files[0];
+                            e.target.value = '';
+                            if (file) handleEmbeddedBillCsvImport(file, projectId);
                         };
                     }
                 } else {
@@ -10916,12 +10934,16 @@
                     
                     html += '</div>';
                     
-                    // Add upload more button
+                    // Add upload more button and import from CSV button
                     html += `
-                        <div style="margin-top: 1rem; text-align: center;">
+                        <div style="margin-top: 1rem; text-align: center; display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
                             <input type="file" id="embeddedBillFileInput" accept=".pdf,image/*" multiple style="display:none;">
                             <button id="embeddedBillUploadBtn" class="button secondary" style="font-size: 0.9rem;">
                                 + Add More Bills
+                            </button>
+                            <input type="file" id="embeddedBillCsvInput" accept=".csv" style="display:none;">
+                            <button id="embeddedBillImportCsvBtn" class="button secondary" style="font-size: 0.9rem;">
+                                📥 Import from CSV
                             </button>
                         </div>
                     `;
@@ -11017,6 +11039,18 @@
                             const filesArray = Array.from(e.target.files);
                             e.target.value = '';
                             handleEmbeddedBillUpload(filesArray);
+                        };
+                    }
+                    
+                    // Wire up CSV import button
+                    const csvImportBtn = document.getElementById('embeddedBillImportCsvBtn');
+                    const csvInput = document.getElementById('embeddedBillCsvInput');
+                    if (csvImportBtn && csvInput) {
+                        csvImportBtn.onclick = () => csvInput.click();
+                        csvInput.onchange = (e) => {
+                            const file = e.target.files[0];
+                            e.target.value = '';
+                            if (file) handleEmbeddedBillCsvImport(file, projectId);
                         };
                     }
                 }
@@ -12215,6 +12249,65 @@
                     if (statusEl) statusEl.innerHTML = '';
                 }, 2000);
             }, 1500);
+        }
+        
+        /**
+         * Handle importing bills from CSV file.
+         * Instantly recreates all bill data without needing to re-upload/process PDFs.
+         */
+        async function handleEmbeddedBillCsvImport(file, projectId) {
+            if (!file) return;
+            
+            projectId = projectId || ProjectState.currentProjectId || ProjectState.project_id;
+            if (!projectId) {
+                showToast('Please save the project first before importing bills.', 'warning');
+                return;
+            }
+            
+            console.log(`[embeddedBills] Importing bills from CSV: ${file.name}`);
+            
+            const statusEl = document.getElementById('embeddedBillUploadStatus');
+            if (statusEl) statusEl.innerHTML = '<span style="color: #2196f3;">📥 Importing bills from CSV...</span>';
+            
+            try {
+                // Read file content
+                const csvContent = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = () => reject(reader.error);
+                    reader.readAsText(file);
+                });
+                
+                // Send to import endpoint
+                const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/import-csv`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ csv: csvContent })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    const msg = `✓ Imported ${result.bills_imported} bills (${result.accounts_created} accounts, ${result.meters_created} meters)`;
+                    if (statusEl) statusEl.innerHTML = `<span style="color: #28a745;">${msg}</span>`;
+                    showToast(msg, 'success');
+                    
+                    // Refresh the bills section to show imported data
+                    setTimeout(() => {
+                        renderEmbeddedBillsSection();
+                        if (statusEl) statusEl.innerHTML = '';
+                    }, 1500);
+                } else {
+                    const errorMsg = result.error || 'Import failed';
+                    if (statusEl) statusEl.innerHTML = `<span style="color: #dc3545;">✗ ${errorMsg}</span>`;
+                    showToast(errorMsg, 'error');
+                }
+                
+            } catch (err) {
+                console.error('[embeddedBills] CSV import error:', err);
+                if (statusEl) statusEl.innerHTML = `<span style="color: #dc3545;">✗ Import failed: ${err.message}</span>`;
+                showToast('Failed to import bills CSV', 'error');
+            }
         }
         
         // ==================================================================================

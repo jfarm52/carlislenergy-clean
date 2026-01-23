@@ -454,6 +454,65 @@ def register(*, bills_bp, is_enabled, extraction_progress, populate_normalized_t
             print(f"[bills] Error exporting bills CSV: {e}")
             return jsonify({"success": False, "error": str(e)}), 500
 
+    @bills_bp.route("/api/projects/<project_id>/bills/import-csv", methods=["POST"])
+    def import_bills_csv_endpoint(project_id):
+        """
+        Import bills from CSV into a project.
+        
+        Instantly recreates all bill data (accounts, meters, bills, TOU breakdown)
+        without needing to re-upload and re-process PDF files.
+        
+        Accepts either:
+        - JSON body with {"csv": "csv_content_string"}
+        - Form data with file upload
+        """
+        if not is_enabled():
+            return jsonify({"error": "Bills feature is disabled"}), 403
+
+        try:
+            from bill_intake.db.export import import_bills_csv
+            
+            csv_content = None
+            
+            # Try JSON body first
+            if request.is_json:
+                data = request.get_json()
+                csv_content = data.get("csv", "")
+            
+            # Try form file upload
+            elif "file" in request.files:
+                file = request.files["file"]
+                if file and file.filename:
+                    csv_content = file.read().decode("utf-8")
+            
+            # Try form field
+            elif request.form.get("csv"):
+                csv_content = request.form.get("csv")
+            
+            if not csv_content or not csv_content.strip():
+                return jsonify({"success": False, "error": "No CSV content provided"}), 400
+            
+            # Import the bills
+            result = import_bills_csv(project_id, csv_content)
+            
+            if "error" in result and result.get("bills_imported", 0) == 0:
+                return jsonify({"success": False, "error": result["error"]}), 400
+            
+            return jsonify({
+                "success": True,
+                "bills_imported": result.get("bills_imported", 0),
+                "accounts_created": result.get("accounts_created", 0),
+                "meters_created": result.get("meters_created", 0),
+                "rows_skipped": result.get("rows_skipped", 0),
+                "errors": result.get("errors", [])
+            })
+            
+        except Exception as e:
+            print(f"[bills] Error importing bills CSV: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"success": False, "error": str(e)}), 500
+
     @bills_bp.route("/api/projects/<project_id>/bills/merge-duplicate-accounts", methods=["POST"])
     def merge_duplicate_accounts_endpoint(project_id):
         """Merge duplicate accounts that have the same normalized utility name and account number,

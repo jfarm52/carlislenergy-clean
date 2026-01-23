@@ -1,8 +1,14 @@
-"""Exports for bill intake data (e.g., CSV)."""
+"""Import/Export for bill intake data (CSV)."""
 
 from __future__ import annotations
 
+import csv
+import io
+
 from bill_intake.db.connection import get_connection
+from bill_intake.db.accounts import upsert_utility_account
+from bill_intake.db.meters import upsert_utility_meter
+from bill_intake.db.bills_write import insert_bill
 
 
 def export_bills_csv(project_id):
@@ -149,4 +155,163 @@ def export_bills_csv(project_id):
     finally:
         conn.close()
 
+
+def import_bills_csv(project_id, csv_content):
+    """
+    Import bills from CSV into a project.
+    Creates accounts, meters, and bills from the CSV data.
+    Returns dict with import stats.
+    
+    This is the inverse of export_bills_csv() - allows instant recreation
+    of all bill data without re-uploading and re-processing PDFs.
+    """
+    # CSV header to internal field mapping
+    HEADER_MAP = {
+        "Utility": "utility_name",
+        "Account Number": "account_number",
+        "Meter Number": "meter_number",
+        "Service Address": "service_address",
+        "Rate Schedule": "rate_schedule",
+        "Period Start": "period_start",
+        "Period End": "period_end",
+        "Due Date": "due_date",
+        "Days": "days_in_period",
+        "Total kWh": "total_kwh",
+        "Total Amount ($)": "total_amount_due",
+        "Blended Rate ($/kWh)": "blended_rate",
+        "Avg Cost/Day ($)": "avg_cost_per_day",
+        "Energy Charges ($)": "energy_charges",
+        "Demand Charges ($)": "demand_charges",
+        "Other Charges ($)": "other_charges",
+        "Taxes ($)": "taxes",
+        "On-Peak kWh": "tou_on_kwh",
+        "On-Peak Rate ($/kWh)": "tou_on_rate_dollars",
+        "On-Peak Cost ($)": "tou_on_cost",
+        "Mid-Peak kWh": "tou_mid_kwh",
+        "Mid-Peak Rate ($/kWh)": "tou_mid_rate_dollars",
+        "Mid-Peak Cost ($)": "tou_mid_cost",
+        "Off-Peak kWh": "tou_off_kwh",
+        "Off-Peak Rate ($/kWh)": "tou_off_rate_dollars",
+        "Off-Peak Cost ($)": "tou_off_cost",
+        "Super Off-Peak kWh": "tou_super_off_kwh",
+        "Super Off-Peak Rate ($/kWh)": "tou_super_off_rate_dollars",
+        "Super Off-Peak Cost ($)": "tou_super_off_cost",
+        "Source File": "source_file",
+    }
+    
+    def parse_float(val):
+        """Parse a float value, returning None for empty/invalid."""
+        if val is None or val == "" or val == "None":
+            return None
+        try:
+            return float(str(val).replace(",", "").replace("$", "").strip())
+        except (ValueError, TypeError):
+            return None
+    
+    def parse_date(val):
+        """Parse a date value, returning None for empty/invalid."""
+        if val is None or val == "" or val == "None":
+            return None
+        val = str(val).strip()
+        if not val:
+            return None
+        # Handle YYYY-MM-DD format from export
+        if len(val) == 10 and val[4] == "-":
+            return val
+        return val
+    
+    try:
+        # Parse CSV
+        reader = csv.DictReader(io.StringIO(csv_content))
+        
+        stats = {
+            "accounts_created": 0,
+            "meters_created": 0,
+            "bills_imported": 0,
+            "rows_skipped": 0,
+            "errors": []
+        }
+        
+        # Track created entities to count unique creations
+        seen_accounts = set()
+        seen_meters = set()
+        
+        for row_num, row in enumerate(reader, start=2):  # Start at 2 (1 is header)
+            try:
+                # Map headers to internal fields
+                data = {}
+                for csv_header, internal_key in HEADER_MAP.items():
+                    if csv_header in row:
+                        data[internal_key] = row[csv_header]
+                
+                # Required fields check
+                utility = data.get("utility_name", "").strip()
+                account_num = data.get("account_number", "").strip()
+                
+                if not utility or not account_num:
+                    stats["rows_skipped"] += 1
+                    continue
+                
+                # Get or create account
+                account_key = f"{utility}:{account_num}"
+                account_id = upsert_utility_account(project_id, utility, account_num)
+                if account_key not in seen_accounts:
+                    seen_accounts.add(account_key)
+                    stats["accounts_created"] += 1
+                
+                # Get or create meter
+                meter_num = data.get("meter_number", "").strip() or "Primary"
+                service_addr = data.get("service_address", "").strip()
+                meter_key = f"{account_id}:{meter_num}"
+                meter_id = upsert_utility_meter(account_id, meter_num, service_addr)
+                if meter_key not in seen_meters:
+                    seen_meters.add(meter_key)
+                    stats["meters_created"] += 1
+                
+                # Insert bill (bill_file_id = None since imported from CSV)
+                bill_id = insert_bill(
+                    bill_file_id=None,
+                    account_id=account_id,
+                    meter_id=meter_id,
+                    utility_name=utility,
+                    service_address=service_addr,
+                    rate_schedule=data.get("rate_schedule", "").strip() or None,
+                    period_start=parse_date(data.get("period_start")),
+                    period_end=parse_date(data.get("period_end")),
+                    total_kwh=parse_float(data.get("total_kwh")),
+                    total_amount_due=parse_float(data.get("total_amount_due")),
+                    energy_charges=parse_float(data.get("energy_charges")),
+                    demand_charges=parse_float(data.get("demand_charges")),
+                    other_charges=parse_float(data.get("other_charges")),
+                    taxes=parse_float(data.get("taxes")),
+                    tou_on_kwh=parse_float(data.get("tou_on_kwh")),
+                    tou_mid_kwh=parse_float(data.get("tou_mid_kwh")),
+                    tou_off_kwh=parse_float(data.get("tou_off_kwh")),
+                    tou_super_off_kwh=parse_float(data.get("tou_super_off_kwh")),
+                    tou_on_rate_dollars=parse_float(data.get("tou_on_rate_dollars")),
+                    tou_mid_rate_dollars=parse_float(data.get("tou_mid_rate_dollars")),
+                    tou_off_rate_dollars=parse_float(data.get("tou_off_rate_dollars")),
+                    tou_super_off_rate_dollars=parse_float(data.get("tou_super_off_rate_dollars")),
+                    tou_on_cost=parse_float(data.get("tou_on_cost")),
+                    tou_mid_cost=parse_float(data.get("tou_mid_cost")),
+                    tou_off_cost=parse_float(data.get("tou_off_cost")),
+                    tou_super_off_cost=parse_float(data.get("tou_super_off_cost")),
+                    due_date=parse_date(data.get("due_date")),
+                    service_type="electric",
+                )
+                
+                stats["bills_imported"] += 1
+                print(f"[import] Row {row_num}: Imported bill {bill_id} for {utility} account {account_num}")
+                
+            except Exception as e:
+                error_msg = f"Row {row_num}: {str(e)}"
+                stats["errors"].append(error_msg)
+                print(f"[import] ERROR {error_msg}")
+        
+        print(f"[import] Complete: {stats['bills_imported']} bills, {stats['accounts_created']} accounts, {stats['meters_created']} meters")
+        return stats
+        
+    except Exception as e:
+        print(f"[import] ERROR parsing CSV: {e}")
+        return {"error": str(e), "bills_imported": 0}
 
