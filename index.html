@@ -17645,8 +17645,9 @@
 
             // Evaporator fields (with Sheet column; condensers will use condFieldOrder without Sheet)
             // Notes column added at the end for both evaporators and condensers
+            // Condensers include currentTemp/setPoint as empty placeholders to align Notes in column X for both
             const evapFieldOrder = ['zone','sheet','name','count','fanMotorsPerUnit','voltage','amps','phase','hp','mfg','motorMounting','frame','rpm','rotation','shaftSize','shaftAdapterQty','shaftAdapterType','bladeSpec','bladesNeeded','runTime','currentTemp','setPoint','notes'];
-            const condFieldOrder = ['zone','split','name','count','fanMotorsPerUnit','voltage','amps','phase','hp','mfg','motorMounting','frame','rpm','rotation','shaftSize','shaftAdapterQty','shaftAdapterType','bladeSpec','bladesNeeded','runTime','notes'];
+            const condFieldOrder = ['zone','split','name','count','fanMotorsPerUnit','voltage','amps','phase','hp','mfg','motorMounting','frame','rpm','rotation','shaftSize','shaftAdapterQty','shaftAdapterType','bladeSpec','bladesNeeded','runTime','currentTemp','setPoint','notes'];
             
             // Readable column headers
             const fieldHeaders = {
