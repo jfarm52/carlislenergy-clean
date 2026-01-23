@@ -11702,7 +11702,13 @@
                             let detailHtml = `
                                 <!-- Bill Summary Section -->
                                 <div style="background: white; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 0.75rem; overflow: hidden;">
-                                    <div style="background: #f5f5f5; padding: 0.5rem 0.75rem; font-weight: 600; color: #333; border-bottom: 1px solid #ddd;">📋 Bill Summary</div>
+                                    <div style="background: #f5f5f5; padding: 0.5rem 0.75rem; font-weight: 600; color: #333; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
+                                        <span>📋 Bill Summary</span>
+                                        <div style="display: flex; gap: 0.5rem;">
+                                            <button onclick="openBillReviewModal(${bill.billFileId || bill.bill_file_id || billId})" style="background: #6c757d; color: white; border: none; border-radius: 4px; padding: 0.35rem 0.75rem; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.25rem;">🔧 Edit</button>
+                                            <button onclick="openBillPdfModal(${bill.billFileId || bill.bill_file_id || billId}, '${(bill.original_filename || 'Bill').replace(/'/g, "\\'")}')" style="background: #1976d2; color: white; border: none; border-radius: 4px; padding: 0.35rem 0.75rem; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.25rem;">📄 View Bill</button>
+                                        </div>
+                                    </div>
                                     <div style="padding: 0.75rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; font-size: 0.85rem;">
                                         <div>
                                             <div style="color: #666; font-size: 0.75rem; text-transform: uppercase;">Service Address</div>

@@ -12,7 +12,8 @@ from dataclasses import dataclass
 import pymupdf  # PyMuPDF 1.26+ uses pymupdf, not fitz
 from PIL import Image
 import pytesseract
-import pandas as pd
+# Lazy import pandas - only needed for Excel/CSV, not for PDFs
+# import pandas as pd  # Moved to lazy import in _normalize_spreadsheet
 
 logger = logging.getLogger(__name__)
 
@@ -242,6 +243,9 @@ class NormalizationService:
     def _normalize_spreadsheet(self, file_path: str, file_size: int, ext: str) -> NormalizationResult:
         """Convert spreadsheet to text representation."""
         try:
+            # Lazy import pandas - only needed for Excel/CSV, avoids numpy dependency for PDF processing
+            import pandas as pd
+            
             if ext == '.csv':
                 df = pd.read_csv(file_path)
             else:

@@ -10,15 +10,18 @@ LOG_FILE="$RUN_DIR/app.log"
 
 mkdir -p "$RUN_DIR"
 
-PYTHON_BIN="${PYTHON_BIN:-python3}"
-
-if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-  if command -v python3 >/dev/null 2>&1; then
+# Prefer Python 3.12 (3.14 has numpy compatibility issues)
+if [[ -z "${PYTHON_BIN:-}" ]]; then
+  if command -v /opt/homebrew/bin/python3.12 >/dev/null 2>&1; then
+    PYTHON_BIN="/opt/homebrew/bin/python3.12"
+  elif command -v python3.12 >/dev/null 2>&1; then
+    PYTHON_BIN="python3.12"
+  elif command -v python3 >/dev/null 2>&1; then
     PYTHON_BIN="python3"
   elif command -v python >/dev/null 2>&1; then
     PYTHON_BIN="python"
   else
-    echo "[start] ERROR: No Python found. Install Python 3.11+ and re-run."
+    echo "[start] ERROR: No Python found. Install Python 3.12 and re-run."
     exit 127
   fi
 fi
