@@ -46,3 +46,5 @@ attached_assets/
 bill_screenshots/
 deleted_projects.json
 FULL_CODE_ANALYSIS.mdbill_uploads/
+bill_uploads/*.pdf
+bill_uploads 2/
