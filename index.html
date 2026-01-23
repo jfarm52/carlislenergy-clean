@@ -17644,8 +17644,9 @@
                 addProjectToSaved();
 
             // Evaporator fields (with Sheet column; condensers will use condFieldOrder without Sheet)
-            const evapFieldOrder = ['zone','sheet','name','count','fanMotorsPerUnit','voltage','amps','phase','hp','mfg','motorMounting','frame','rpm','rotation','shaftSize','shaftAdapterQty','shaftAdapterType','bladeSpec','bladesNeeded','runTime','currentTemp','setPoint'];
-            const condFieldOrder = ['zone','split','name','count','fanMotorsPerUnit','voltage','amps','phase','hp','mfg','motorMounting','frame','rpm','rotation','shaftSize','shaftAdapterQty','shaftAdapterType','bladeSpec','bladesNeeded','runTime'];
+            // Notes column added at the end for both evaporators and condensers
+            const evapFieldOrder = ['zone','sheet','name','count','fanMotorsPerUnit','voltage','amps','phase','hp','mfg','motorMounting','frame','rpm','rotation','shaftSize','shaftAdapterQty','shaftAdapterType','bladeSpec','bladesNeeded','runTime','currentTemp','setPoint','notes'];
+            const condFieldOrder = ['zone','split','name','count','fanMotorsPerUnit','voltage','amps','phase','hp','mfg','motorMounting','frame','rpm','rotation','shaftSize','shaftAdapterQty','shaftAdapterType','bladeSpec','bladesNeeded','runTime','notes'];
             
             // Readable column headers
             const fieldHeaders = {
@@ -17671,7 +17672,8 @@
                 bladesNeeded: 'QTY Blades Needed',
                 runTime: 'Operation Time Factor',
                 currentTemp: 'Current Temp',
-                setPoint: 'Set Point'
+                setPoint: 'Set Point',
+                notes: 'Notes'
             };
             
             const fieldMap = {
@@ -17697,7 +17699,8 @@
                 bladesNeeded: 'room-bladesNeeded',
                 runTime: 'room-runTime',
                 currentTemp: 'room-currentTemp',
-                setPoint: 'room-setPoint'
+                setPoint: 'room-setPoint',
+                notes: 'room-notes'
             };
 
             // Separate evaporators and condensers
@@ -18153,7 +18156,8 @@
                                 'Blade Specs': 'room-bladeSpec',
                                 'QTY Blades Needed': 'room-bladesNeeded',
                                 'Current Temp': 'room-currentTemp',
-                                'Set Point': 'room-setPoint'
+                                'Set Point': 'room-setPoint',
+                                'Notes': 'room-notes'
                             };
                             
                             headers.forEach((h, i) => {
