@@ -315,9 +315,9 @@ def upload_csv():
                 old_date = datetime.datetime.strptime(old_date_str, "%m.%d.%y")
                 sw_date_part = format_date_no_leading_zeros(old_date)
             except:
-                sw_date_part = format_date_no_leading_zeros(datetime.datetime.utcnow())
+                sw_date_part = format_date_no_leading_zeros(datetime.datetime.now())
         else:
-            sw_date_part = format_date_no_leading_zeros(datetime.datetime.utcnow())
+            sw_date_part = format_date_no_leading_zeros(datetime.datetime.now())
         
         # Build full folder structure matching Pending Proposals
         sitewalk_company_folder = f"{BASE_PATH}/{sw_company}"
@@ -424,9 +424,9 @@ def upload_csv():
                         old_date = datetime.datetime.strptime(old_date_str, "%m.%d.%y")
                         date_part = format_date_no_leading_zeros(old_date)
                     except:
-                        date_part = format_date_no_leading_zeros(datetime.datetime.utcnow())
+                        date_part = format_date_no_leading_zeros(datetime.datetime.now())
                 else:
-                    date_part = format_date_no_leading_zeros(datetime.datetime.utcnow())
+                    date_part = format_date_no_leading_zeros(datetime.datetime.now())
                 
                 # Build fallback folder hierarchy under SiteWalk Exports / [Customer Name]
                 # Address folder without utility suffix
@@ -502,10 +502,10 @@ def upload_csv():
                         date_part = format_date_no_leading_zeros(old_date)
                     except:
                         # Fallback: use current date if parsing fails
-                        date_part = format_date_no_leading_zeros(datetime.datetime.utcnow())
+                        date_part = format_date_no_leading_zeros(datetime.datetime.now())
                 else:
                     # Fallback: use current date
-                    date_part = format_date_no_leading_zeros(datetime.datetime.utcnow())
+                    date_part = format_date_no_leading_zeros(datetime.datetime.now())
                 
                 # Build folder hierarchy: PP_ROOT/<utility_folder>/<company>/...
                 pp_utility_folder = f"{PP_ROOT}/{utility_folder_name}"
@@ -647,9 +647,9 @@ def upload_photo():
                 date_obj = datetime.datetime.strptime(visit_date, "%m.%d.%y")
                 date_part = format_date_no_leading_zeros(date_obj)
             except:
-                date_part = format_date_no_leading_zeros(datetime.datetime.utcnow())
+                date_part = format_date_no_leading_zeros(datetime.datetime.now())
         else:
-            date_part = format_date_no_leading_zeros(datetime.datetime.utcnow())
+            date_part = format_date_no_leading_zeros(datetime.datetime.now())
         
         dbx = get_dbx()
         
@@ -757,9 +757,9 @@ def upload_photos_batch():
                 date_obj = datetime.datetime.strptime(visit_date, "%m.%d.%y")
                 date_part = format_date_no_leading_zeros(date_obj)
             except:
-                date_part = format_date_no_leading_zeros(datetime.datetime.utcnow())
+                date_part = format_date_no_leading_zeros(datetime.datetime.now())
         else:
-            date_part = format_date_no_leading_zeros(datetime.datetime.utcnow())
+            date_part = format_date_no_leading_zeros(datetime.datetime.now())
         
         dbx = get_dbx()
         
