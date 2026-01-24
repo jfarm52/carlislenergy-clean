@@ -381,23 +381,18 @@ def import_bills_csv(project_id, csv_content):
 
 def export_bills_excel(project_id, customer_name=""):
     """
-    Export bills as a formatted Excel file for the proposal workbook.
+    Export bills as a professionally formatted Excel file for proposals.
     
-    Returns bytes of the .xlsx file.
-    
-    Layout:
-    - Columns A-G: Formatted summary (visible, for printing)
-    - Columns AA-AL: Raw data (hidden off-screen, for formulas)
+    Clean, modern design with consistent styling.
     """
     from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side, NamedStyle
     from openpyxl.utils import get_column_letter
     from datetime import datetime
     
     conn = get_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Get all bills for project with TOU data
             cur.execute(
                 """
                 SELECT
@@ -438,8 +433,9 @@ def export_bills_excel(project_id, customer_name=""):
             total_kwh = sum(float(b["total_kwh"] or 0) for b in bills)
             total_cost = sum(float(b["total_amount_due"] or 0) for b in bills)
             total_days = sum(int(b["days_in_period"] or 0) for b in bills)
-            avg_rate = (total_cost / total_kwh * 100) if total_kwh > 0 else 0  # cents/kWh
-            avg_per_day = (total_cost / total_days) if total_days > 0 else 0
+            avg_rate = (total_cost / total_kwh * 100) if total_kwh > 0 else 0
+            avg_daily_kwh = total_kwh / total_days if total_days > 0 else 0
+            avg_daily_cost = total_cost / total_days if total_days > 0 else 0
             
             # TOU totals
             tou_on_kwh = sum(float(b["tou_on_kwh"] or 0) for b in bills)
@@ -456,178 +452,332 @@ def export_bills_excel(project_id, customer_name=""):
             # Create workbook
             wb = Workbook()
             ws = wb.active
-            ws.title = "Utility Summary"
+            ws.title = "Utility Analysis"
             
-            # Define styles
-            header_fill = PatternFill(start_color="1E5A99", end_color="1E5A99", fill_type="solid")
-            header_font = Font(color="FFFFFF", bold=True, size=14)
-            subheader_font = Font(bold=True, size=11)
-            money_format = '"$"#,##0.00'
-            kwh_format = '#,##0" kWh"'
-            rate_format = '0.0" ¢/kWh"'
+            # ========== PROFESSIONAL COLOR SCHEME ==========
+            # Dark slate blue for headers
+            primary_dark = "2C3E50"
+            primary_medium = "34495E"
+            # Accent color (teal)
+            accent = "1ABC9C"
+            # Light backgrounds
+            light_gray = "ECF0F1"
+            white = "FFFFFF"
+            # Text colors
+            dark_text = "2C3E50"
+            
+            # Borders
             thin_border = Border(
-                left=Side(style='thin'),
-                right=Side(style='thin'),
-                top=Side(style='thin'),
-                bottom=Side(style='thin')
+                left=Side(style='thin', color='BDC3C7'),
+                right=Side(style='thin', color='BDC3C7'),
+                top=Side(style='thin', color='BDC3C7'),
+                bottom=Side(style='thin', color='BDC3C7')
             )
+            thick_bottom = Border(bottom=Side(style='medium', color=primary_dark))
             
-            # TOU colors
-            on_peak_fill = PatternFill(start_color="DC3545", end_color="DC3545", fill_type="solid")
-            mid_peak_fill = PatternFill(start_color="FFC107", end_color="FFC107", fill_type="solid")
-            off_peak_fill = PatternFill(start_color="28A745", end_color="28A745", fill_type="solid")
-            super_off_fill = PatternFill(start_color="17A2B8", end_color="17A2B8", fill_type="solid")
+            # Alignment
+            center = Alignment(horizontal='center', vertical='center')
+            right_align = Alignment(horizontal='right', vertical='center')
+            left_align = Alignment(horizontal='left', vertical='center')
             
-            # ===== FORMATTED SUMMARY (Columns A-G) =====
+            # Set column widths first
+            ws.column_dimensions['A'].width = 18
+            ws.column_dimensions['B'].width = 16
+            ws.column_dimensions['C'].width = 16
+            ws.column_dimensions['D'].width = 14
+            ws.column_dimensions['E'].width = 16
+            ws.column_dimensions['F'].width = 14
+            
+            # ========== HEADER SECTION ==========
             row = 1
             
-            # Title row
-            ws.merge_cells('A1:G1')
-            ws['A1'] = "Utility Rate Summary"
-            ws['A1'].font = header_font
-            ws['A1'].fill = header_fill
-            ws['A1'].alignment = Alignment(horizontal='center')
-            row += 1
+            # Main title
+            ws.merge_cells('A1:F1')
+            ws['A1'] = "UTILITY RATE ANALYSIS"
+            ws['A1'].font = Font(name='Arial', size=18, bold=True, color=white)
+            ws['A1'].fill = PatternFill(start_color=primary_dark, end_color=primary_dark, fill_type="solid")
+            ws['A1'].alignment = center
+            ws.row_dimensions[1].height = 35
             
             # Customer name
-            ws.merge_cells('A2:G2')
+            ws.merge_cells('A2:F2')
             ws['A2'] = customer_name or "Customer"
-            ws['A2'].font = Font(bold=True, size=12)
-            ws['A2'].alignment = Alignment(horizontal='center')
-            row += 1
+            ws['A2'].font = Font(name='Arial', size=14, bold=True, color=dark_text)
+            ws['A2'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
+            ws['A2'].alignment = center
+            ws.row_dimensions[2].height = 25
             
             # Utility name
-            ws.merge_cells('A3:G3')
+            ws.merge_cells('A3:F3')
             ws['A3'] = utility_name
-            ws['A3'].alignment = Alignment(horizontal='center')
-            row += 2
+            ws['A3'].font = Font(name='Arial', size=11, italic=True, color=primary_medium)
+            ws['A3'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
+            ws['A3'].alignment = center
+            ws.row_dimensions[3].height = 22
             
-            # Summary stats row
+            # Spacer row
+            ws.row_dimensions[4].height = 10
+            
+            # ========== SUMMARY METRICS ==========
             row = 5
-            ws['A5'] = "Total kWh"
-            ws['B5'] = total_kwh
-            ws['B5'].number_format = kwh_format
-            ws['C5'] = "Total Cost"
-            ws['D5'] = total_cost
-            ws['D5'].number_format = money_format
-            ws['E5'] = "Avg Rate"
-            ws['F5'] = avg_rate
-            ws['F5'].number_format = rate_format
-            for col in ['A', 'C', 'E']:
-                ws[f'{col}5'].font = subheader_font
-            row += 2
             
-            # TOU Breakdown header
-            ws.merge_cells('A7:G7')
-            ws['A7'] = "Time-of-Use Breakdown"
-            ws['A7'].font = subheader_font
-            ws['A7'].alignment = Alignment(horizontal='center')
-            row += 1
+            # Summary header
+            ws.merge_cells('A5:F5')
+            ws['A5'] = "ANNUAL SUMMARY"
+            ws['A5'].font = Font(name='Arial', size=12, bold=True, color=white)
+            ws['A5'].fill = PatternFill(start_color=accent, end_color=accent, fill_type="solid")
+            ws['A5'].alignment = center
+            ws.row_dimensions[5].height = 25
             
-            # TOU headers
-            ws['A8'] = "Period"
-            ws['B8'] = "kWh"
-            ws['C8'] = "Cost"
-            ws['D8'] = "Rate"
-            for col in ['A', 'B', 'C', 'D']:
-                ws[f'{col}8'].font = subheader_font
-                ws[f'{col}8'].border = thin_border
-            row += 1
-            
-            # TOU data rows
-            tou_data = [
-                ("On-Peak", tou_on_kwh, tou_on_cost, on_peak_fill),
-                ("Mid-Peak", tou_mid_kwh, tou_mid_cost, mid_peak_fill),
-                ("Off-Peak", tou_off_kwh, tou_off_cost, off_peak_fill),
-                ("Super Off-Peak", tou_super_off_kwh, tou_super_off_cost, super_off_fill),
+            # Metric labels row
+            row = 6
+            metrics = [
+                ("Total Usage", f"{total_kwh:,.0f} kWh"),
+                ("Total Cost", f"${total_cost:,.2f}"),
+                ("Avg Rate", f"{avg_rate:.1f}¢/kWh"),
+            ]
+            metrics2 = [
+                ("Billing Periods", f"{len(bills)}"),
+                ("Daily Avg", f"{avg_daily_kwh:,.0f} kWh"),
+                ("Daily Cost", f"${avg_daily_cost:,.2f}"),
             ]
             
-            for i, (period, kwh, cost, fill) in enumerate(tou_data):
-                r = 9 + i
-                if kwh > 0:  # Only show periods with data
-                    ws[f'A{r}'] = period
-                    ws[f'A{r}'].fill = fill
-                    ws[f'A{r}'].font = Font(color="FFFFFF", bold=True)
-                    ws[f'B{r}'] = kwh
-                    ws[f'B{r}'].number_format = '#,##0'
-                    ws[f'C{r}'] = cost
-                    ws[f'C{r}'].number_format = money_format
-                    ws[f'D{r}'] = (cost / kwh * 100) if kwh > 0 else 0
-                    ws[f'D{r}'].number_format = rate_format
-                    for col in ['A', 'B', 'C', 'D']:
-                        ws[f'{col}{r}'].border = thin_border
+            # Row 6 - labels
+            for i, (label, _) in enumerate(metrics):
+                col = get_column_letter(i * 2 + 1)
+                ws.merge_cells(f'{col}6:{get_column_letter(i * 2 + 2)}6')
+                ws[f'{col}6'] = label
+                ws[f'{col}6'].font = Font(name='Arial', size=9, color=primary_medium)
+                ws[f'{col}6'].alignment = center
             
-            # Billing history header
-            row = 15
-            ws.merge_cells(f'A{row}:G{row}')
-            ws[f'A{row}'] = "Billing History"
-            ws[f'A{row}'].font = subheader_font
-            ws[f'A{row}'].alignment = Alignment(horizontal='center')
+            # Row 7 - values
+            for i, (_, value) in enumerate(metrics):
+                col = get_column_letter(i * 2 + 1)
+                ws.merge_cells(f'{col}7:{get_column_letter(i * 2 + 2)}7')
+                ws[f'{col}7'] = value
+                ws[f'{col}7'].font = Font(name='Arial', size=14, bold=True, color=dark_text)
+                ws[f'{col}7'].alignment = center
+            ws.row_dimensions[7].height = 28
+            
+            # Row 8 - second row labels
+            for i, (label, _) in enumerate(metrics2):
+                col = get_column_letter(i * 2 + 1)
+                ws.merge_cells(f'{col}8:{get_column_letter(i * 2 + 2)}8')
+                ws[f'{col}8'] = label
+                ws[f'{col}8'].font = Font(name='Arial', size=9, color=primary_medium)
+                ws[f'{col}8'].alignment = center
+            
+            # Row 9 - second row values
+            for i, (_, value) in enumerate(metrics2):
+                col = get_column_letter(i * 2 + 1)
+                ws.merge_cells(f'{col}9:{get_column_letter(i * 2 + 2)}9')
+                ws[f'{col}9'] = value
+                ws[f'{col}9'].font = Font(name='Arial', size=12, bold=True, color=dark_text)
+                ws[f'{col}9'].alignment = center
+            
+            # Spacer
+            ws.row_dimensions[10].height = 15
+            
+            # ========== TIME-OF-USE BREAKDOWN ==========
+            row = 11
+            
+            ws.merge_cells('A11:F11')
+            ws['A11'] = "TIME-OF-USE BREAKDOWN"
+            ws['A11'].font = Font(name='Arial', size=12, bold=True, color=white)
+            ws['A11'].fill = PatternFill(start_color=primary_medium, end_color=primary_medium, fill_type="solid")
+            ws['A11'].alignment = center
+            ws.row_dimensions[11].height = 25
+            
+            # TOU headers
+            row = 12
+            tou_headers = ["Period", "Usage (kWh)", "Cost", "Rate (¢/kWh)", "% of Total", ""]
+            for i, header in enumerate(tou_headers):
+                col = get_column_letter(i + 1)
+                ws[f'{col}12'] = header
+                ws[f'{col}12'].font = Font(name='Arial', size=10, bold=True, color=dark_text)
+                ws[f'{col}12'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
+                ws[f'{col}12'].alignment = center
+                ws[f'{col}12'].border = thin_border
+            
+            # TOU data - using subtle shading instead of rainbow colors
+            tou_data = []
+            if tou_on_kwh > 0:
+                tou_data.append(("On-Peak", tou_on_kwh, tou_on_cost, "E74C3C"))  # Muted red
+            if tou_mid_kwh > 0:
+                tou_data.append(("Mid-Peak", tou_mid_kwh, tou_mid_cost, "F39C12"))  # Muted orange
+            if tou_off_kwh > 0:
+                tou_data.append(("Off-Peak", tou_off_kwh, tou_off_cost, "27AE60"))  # Muted green
+            if tou_super_off_kwh > 0:
+                tou_data.append(("Super Off-Peak", tou_super_off_kwh, tou_super_off_cost, "3498DB"))  # Muted blue
+            
+            row = 13
+            for period, kwh, cost, color in tou_data:
+                rate = (cost / kwh * 100) if kwh > 0 else 0
+                pct = (kwh / total_kwh * 100) if total_kwh > 0 else 0
+                
+                # Period name with color indicator (small bar)
+                ws[f'A{row}'] = period
+                ws[f'A{row}'].font = Font(name='Arial', size=10, bold=True, color=color)
+                ws[f'A{row}'].alignment = left_align
+                ws[f'A{row}'].border = thin_border
+                
+                ws[f'B{row}'] = kwh
+                ws[f'B{row}'].number_format = '#,##0'
+                ws[f'B{row}'].alignment = right_align
+                ws[f'B{row}'].border = thin_border
+                
+                ws[f'C{row}'] = cost
+                ws[f'C{row}'].number_format = '"$"#,##0.00'
+                ws[f'C{row}'].alignment = right_align
+                ws[f'C{row}'].border = thin_border
+                
+                ws[f'D{row}'] = rate
+                ws[f'D{row}'].number_format = '0.0'
+                ws[f'D{row}'].alignment = right_align
+                ws[f'D{row}'].border = thin_border
+                
+                ws[f'E{row}'] = pct / 100
+                ws[f'E{row}'].number_format = '0.0%'
+                ws[f'E{row}'].alignment = right_align
+                ws[f'E{row}'].border = thin_border
+                
+                # Color bar indicator
+                ws[f'F{row}'].fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+                ws[f'F{row}'].border = thin_border
+                
+                row += 1
+            
+            # Spacer
+            ws.row_dimensions[row].height = 15
             row += 1
             
-            # History column headers
-            ws[f'A{row}'] = "Month"
-            ws[f'B{row}'] = "kWh Usage"
-            ws[f'C{row}'] = "Charge"
-            ws[f'D{row}'] = "Rate"
-            for col in ['A', 'B', 'C', 'D']:
-                ws[f'{col}{row}'].font = subheader_font
+            # ========== BILLING HISTORY ==========
+            history_start = row
+            
+            ws.merge_cells(f'A{row}:F{row}')
+            ws[f'A{row}'] = "BILLING HISTORY"
+            ws[f'A{row}'].font = Font(name='Arial', size=12, bold=True, color=white)
+            ws[f'A{row}'].fill = PatternFill(start_color=primary_medium, end_color=primary_medium, fill_type="solid")
+            ws[f'A{row}'].alignment = center
+            ws.row_dimensions[row].height = 25
+            row += 1
+            
+            # History headers
+            hist_headers = ["Month", "Usage (kWh)", "Charge", "Rate (¢/kWh)", "Days", "$/Day"]
+            for i, header in enumerate(hist_headers):
+                col = get_column_letter(i + 1)
+                ws[f'{col}{row}'] = header
+                ws[f'{col}{row}'].font = Font(name='Arial', size=10, bold=True, color=dark_text)
+                ws[f'{col}{row}'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
+                ws[f'{col}{row}'].alignment = center
                 ws[f'{col}{row}'].border = thin_border
             row += 1
             
-            # History data
-            for b in bills:
+            # History data with alternating rows
+            for idx, b in enumerate(bills):
                 period_end = b["period_end"]
-                if period_end:
-                    month_str = period_end.strftime("%b %Y") if hasattr(period_end, 'strftime') else str(period_end)[:7]
-                else:
-                    month_str = "Unknown"
-                
-                ws[f'A{row}'] = month_str
-                ws[f'B{row}'] = float(b["total_kwh"] or 0)
-                ws[f'B{row}'].number_format = '#,##0'
-                ws[f'C{row}'] = float(b["total_amount_due"] or 0)
-                ws[f'C{row}'].number_format = money_format
+                month_str = period_end.strftime("%b %Y") if hasattr(period_end, 'strftime') else str(period_end)[:7]
                 kwh_val = float(b["total_kwh"] or 0)
                 cost_val = float(b["total_amount_due"] or 0)
-                ws[f'D{row}'] = (cost_val / kwh_val * 100) if kwh_val > 0 else 0
-                ws[f'D{row}'].number_format = '0.0"¢"'
-                for col in ['A', 'B', 'C', 'D']:
-                    ws[f'{col}{row}'].border = thin_border
+                days_val = int(b["days_in_period"] or 30)
+                rate_val = (cost_val / kwh_val * 100) if kwh_val > 0 else 0
+                daily_cost = cost_val / days_val if days_val > 0 else 0
+                
+                # Alternating row color
+                row_fill = PatternFill(start_color=white, end_color=white, fill_type="solid") if idx % 2 == 0 else PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
+                
+                ws[f'A{row}'] = month_str
+                ws[f'A{row}'].alignment = center
+                ws[f'A{row}'].border = thin_border
+                ws[f'A{row}'].fill = row_fill
+                
+                ws[f'B{row}'] = kwh_val
+                ws[f'B{row}'].number_format = '#,##0'
+                ws[f'B{row}'].alignment = right_align
+                ws[f'B{row}'].border = thin_border
+                ws[f'B{row}'].fill = row_fill
+                
+                ws[f'C{row}'] = cost_val
+                ws[f'C{row}'].number_format = '"$"#,##0.00'
+                ws[f'C{row}'].alignment = right_align
+                ws[f'C{row}'].border = thin_border
+                ws[f'C{row}'].fill = row_fill
+                
+                ws[f'D{row}'] = rate_val
+                ws[f'D{row}'].number_format = '0.0'
+                ws[f'D{row}'].alignment = right_align
+                ws[f'D{row}'].border = thin_border
+                ws[f'D{row}'].fill = row_fill
+                
+                ws[f'E{row}'] = days_val
+                ws[f'E{row}'].alignment = right_align
+                ws[f'E{row}'].border = thin_border
+                ws[f'E{row}'].fill = row_fill
+                
+                ws[f'F{row}'] = daily_cost
+                ws[f'F{row}'].number_format = '"$"#,##0.00'
+                ws[f'F{row}'].alignment = right_align
+                ws[f'F{row}'].border = thin_border
+                ws[f'F{row}'].fill = row_fill
+                
                 row += 1
             
             # Totals row
-            ws[f'A{row}'] = "TOTALS"
-            ws[f'A{row}'].font = Font(bold=True)
+            ws[f'A{row}'] = "TOTAL"
+            ws[f'A{row}'].font = Font(name='Arial', size=10, bold=True)
+            ws[f'A{row}'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
+            ws[f'A{row}'].alignment = center
+            ws[f'A{row}'].border = thin_border
+            
             ws[f'B{row}'] = total_kwh
             ws[f'B{row}'].number_format = '#,##0'
             ws[f'B{row}'].font = Font(bold=True)
-            ws[f'C{row}'] = total_cost
-            ws[f'C{row}'].number_format = money_format
-            ws[f'C{row}'].font = Font(bold=True)
-            ws[f'D{row}'] = avg_rate
-            ws[f'D{row}'].number_format = '0.0"¢"'
-            ws[f'D{row}'].font = Font(bold=True)
-            for col in ['A', 'B', 'C', 'D']:
-                ws[f'{col}{row}'].border = thin_border
+            ws[f'B{row}'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
+            ws[f'B{row}'].alignment = right_align
+            ws[f'B{row}'].border = thin_border
             
-            # ===== RAW DATA (Columns AA-AL) for formulas =====
-            # Column headers starting at AA1
+            ws[f'C{row}'] = total_cost
+            ws[f'C{row}'].number_format = '"$"#,##0.00'
+            ws[f'C{row}'].font = Font(bold=True)
+            ws[f'C{row}'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
+            ws[f'C{row}'].alignment = right_align
+            ws[f'C{row}'].border = thin_border
+            
+            ws[f'D{row}'] = avg_rate
+            ws[f'D{row}'].number_format = '0.0'
+            ws[f'D{row}'].font = Font(bold=True)
+            ws[f'D{row}'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
+            ws[f'D{row}'].alignment = right_align
+            ws[f'D{row}'].border = thin_border
+            
+            ws[f'E{row}'] = total_days
+            ws[f'E{row}'].font = Font(bold=True)
+            ws[f'E{row}'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
+            ws[f'E{row}'].alignment = right_align
+            ws[f'E{row}'].border = thin_border
+            
+            ws[f'F{row}'] = avg_daily_cost
+            ws[f'F{row}'].number_format = '"$"#,##0.00'
+            ws[f'F{row}'].font = Font(bold=True)
+            ws[f'F{row}'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
+            ws[f'F{row}'].alignment = right_align
+            ws[f'F{row}'].border = thin_border
+            
+            # ========== RAW DATA (Hidden columns for formulas) ==========
+            raw_start_col = 27  # Column AA
             raw_headers = [
                 "Month", "Period Start", "Period End", "Days", "kWh", "Charge", "Rate",
                 "On-Peak kWh", "On-Peak Cost", "Mid-Peak kWh", "Mid-Peak Cost",
                 "Off-Peak kWh", "Off-Peak Cost", "Super Off kWh", "Super Off Cost"
             ]
             for i, header in enumerate(raw_headers):
-                col = get_column_letter(27 + i)  # AA = column 27
+                col = get_column_letter(raw_start_col + i)
                 ws[f'{col}1'] = header
-                ws[f'{col}1'].font = Font(bold=True)
+                ws[f'{col}1'].font = Font(bold=True, size=9)
             
-            # Raw data rows
             for row_idx, b in enumerate(bills, start=2):
                 period_end = b["period_end"]
                 month_str = period_end.strftime("%b %Y") if hasattr(period_end, 'strftime') else str(period_end)
-                
                 raw_data = [
                     month_str,
                     str(b["period_start"]) if b["period_start"] else "",
@@ -635,7 +785,7 @@ def export_bills_excel(project_id, customer_name=""):
                     b["days_in_period"] or 0,
                     float(b["total_kwh"] or 0),
                     float(b["total_amount_due"] or 0),
-                    float(b["blended_rate_dollars"] or 0) * 100,  # Convert to cents
+                    float(b["blended_rate_dollars"] or 0) * 100,
                     float(b["tou_on_kwh"] or 0),
                     float(b["tou_on_cost"] or 0),
                     float(b["tou_mid_kwh"] or 0),
@@ -646,17 +796,15 @@ def export_bills_excel(project_id, customer_name=""):
                     float(b["tou_super_off_cost"] or 0),
                 ]
                 for i, val in enumerate(raw_data):
-                    col = get_column_letter(27 + i)
+                    col = get_column_letter(raw_start_col + i)
                     ws[f'{col}{row_idx}'] = val
             
-            # Set column widths
-            ws.column_dimensions['A'].width = 15
-            ws.column_dimensions['B'].width = 15
-            ws.column_dimensions['C'].width = 15
-            ws.column_dimensions['D'].width = 12
-            ws.column_dimensions['E'].width = 12
-            ws.column_dimensions['F'].width = 12
-            ws.column_dimensions['G'].width = 12
+            # Print settings
+            ws.print_title_rows = '1:3'
+            ws.page_setup.orientation = 'portrait'
+            ws.page_setup.fitToPage = True
+            ws.page_setup.fitToWidth = 1
+            ws.page_setup.fitToHeight = 0
             
             # Save to bytes
             output = io.BytesIO()
