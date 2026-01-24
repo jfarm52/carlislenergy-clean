@@ -7929,8 +7929,9 @@
                 }
                 
                 try {
-                    const response = await fetch(`/api/projects/${projectId}/bills/grouped?service=electric`, {
-                        signal: controller.signal
+                    const response = await fetch(`/api/projects/${projectId}/bills/grouped?service=electric&_t=${Date.now()}`, {
+                        signal: controller.signal,
+                        cache: 'no-store'
                     });
                     clearTimeout(timeoutId);
                     
@@ -8108,7 +8109,7 @@
                 if (!container) return;
                 
                 try {
-                    const response = await fetch(`/api/projects/${projectId}/bills/summary?months=12&service=electric`);
+                    const response = await fetch(`/api/projects/${projectId}/bills/summary?months=12&service=electric&_t=${Date.now()}`, { cache: 'no-store' });
                     const data = await response.json();
                     
                     if (!data.success || !data.accounts || data.accounts.length === 0) {
@@ -10788,8 +10789,9 @@
             try {
                 // Fetch grouped bills data (includes files and extracted accounts/meters)
                 // service=electric filters to electric/combined/NULL service types (excludes water/gas-only)
-                const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/grouped?service=electric`, {
-                    signal: controller.signal
+                const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/grouped?service=electric&_t=${Date.now()}`, {
+                    signal: controller.signal,
+                    cache: 'no-store'
                 });
                 clearTimeout(timeoutId);
                 groupedData = response.ok ? await response.json() : { files: [], accounts: [] };
@@ -11343,7 +11345,7 @@
             try {
                 // Use the summary endpoint which provides properly aggregated data
                 // service=electric filters to electric/combined/NULL service types (excludes water/gas-only)
-                const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/summary?months=12&service=electric`);
+                const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/summary?months=12&service=electric&_t=${Date.now()}`, { cache: 'no-store' });
                 const data = response.ok ? await response.json() : { success: false };
                 
                 if (!data.success || !data.accounts || data.accounts.length === 0) {
