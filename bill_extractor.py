@@ -15,6 +15,74 @@ except ImportError:
 XAI_API_KEY = os.environ.get("XAI_API_KEY")
 XAI_BASE_URL = "https://api.x.ai/v1"
 
+# Utility company HQ addresses that should NOT be used as customer service addresses
+UTILITY_HQ_ADDRESSES = [
+    "505 VAN NESS",       # PG&E HQ San Francisco
+    "2244 WALNUT GROVE",  # SCE HQ Rosemead
+    "111 N HOPE",         # LADWP HQ Los Angeles
+    "8330 CENTURY PARK",  # SoCalGas HQ
+    "101 ASH ST",         # SDGE HQ San Diego
+]
+
+# Garbage patterns that indicate a bad address extraction
+ADDRESS_GARBAGE_PATTERNS = [
+    "APM", "KVARH", "BASE KVARH", "METER NUMBER", "SERVES",
+    "DATE", "BILL", "PREPARED", "PROJECTED", "RATE", "GROUP",
+    "ROTATING", "OUTAGE", "SCHEDULE", "CHARGES", "PAYMENT",
+    "CUSTOMER", "ACCOUNT", "SERVICE ACCOUNT", "FORECAST",
+    "NOTICE", "INCREASE", "DESCRIBED", "DEO SLOAN", "POD-ID",
+]
+
+import re as _re_module  # For validate_service_address
+
+def validate_service_address(addr):
+    """
+    Validate and clean a service address.
+    Returns cleaned address or None if invalid/garbage.
+    """
+    if not addr or not isinstance(addr, str):
+        return None
+    
+    addr = addr.strip()
+    if not addr:
+        return None
+    
+    # Clean up OCR concatenation errors
+    addr = _re_module.sub(r'\s+Date\s+bil.*$', '', addr, flags=_re_module.IGNORECASE)
+    addr = _re_module.sub(r'\s+\d{5,}\s+[A-Z]{3,}\s+[A-Z]+\s+\d+$', '', addr)
+    addr = _re_module.sub(r'\s+[A-Z]{2,}\s+[A-Z]+\s+\d+$', '', addr)
+    addr = addr.strip()
+    
+    # Check for garbage patterns
+    upper_addr = addr.upper()
+    if any(skip in upper_addr for skip in ADDRESS_GARBAGE_PATTERNS):
+        print(f"[validate_address] Rejecting garbage address: '{addr}'")
+        return None
+    
+    # Check for utility HQ addresses
+    if any(hq in upper_addr for hq in UTILITY_HQ_ADDRESSES):
+        print(f"[validate_address] Rejecting utility HQ address: '{addr}'")
+        return None
+    
+    # Must start with a street number (1-5 digits)
+    if not _re_module.match(r'^\d{1,5}\s+', addr):
+        print(f"[validate_address] Rejecting address without street number: '{addr}'")
+        return None
+    
+    # Street name part must be at least 8 chars
+    street_name_part = _re_module.sub(r'^\d+\s+', '', addr)
+    if len(street_name_part) < 8:
+        print(f"[validate_address] Rejecting short street name: '{addr}'")
+        return None
+    
+    # Must have a street suffix
+    street_suffixes = r"(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|RD|ROAD|WAY|LN|LANE|CT|COURT|PL|PLACE|CIR|CIRCLE|TRL|TRAIL|PKWY|PARKWAY)"
+    if not _re_module.search(street_suffixes, addr, _re_module.IGNORECASE):
+        print(f"[validate_address] Rejecting address without street suffix: '{addr}'")
+        return None
+    
+    return addr
+
 def _xai_chat_completions(payload: dict, timeout_s: int = 180) -> dict:
     """Call xAI OpenAI-compatible REST API without importing the OpenAI SDK."""
     if not XAI_API_KEY:
@@ -187,7 +255,7 @@ Analyze this electric bill and return ONLY JSON with these keys:
 ACCOUNT INFO:
 - customer_account: string (main customer account number - IMPORTANT: For LADWP bills, use the "ACCOUNT NUMBER" from the bill header, NOT the "SA #" which is a Service Agreement number)
 - service_account: string (service/meter account number - For LADWP, this is the SA# or Service Agreement number)
-- service_address: string (full address)
+- service_address: string (CUSTOMER'S service address where power is delivered - NOT the utility company's address. Look for "Service Address", "Premise Address", or "Service Location". Ignore addresses like "505 Van Ness Avenue" (PG&E HQ) or "2244 Walnut Grove Ave" (SCE HQ). Must start with a street number.)
 - pod_id: string (POD-ID if shown)
 - utility_name: string (e.g., "SCE", "Southern California Edison", "LADWP", "PG&E")
 - rate: string (rate schedule name, e.g., "TOU-GS-2-E")
@@ -407,6 +475,25 @@ Use null for any field you cannot confidently extract. Amounts should be numbers
         raw_result = json.loads(clean_text)
         
         result = flatten_grok_response(raw_result)
+        
+        # Validate and clean service_address from AI response
+        if result.get("service_address"):
+            cleaned_addr = validate_service_address(result["service_address"])
+            if cleaned_addr:
+                result["service_address"] = cleaned_addr
+            else:
+                print(f"[bill_extractor] Rejected AI-extracted address: {result['service_address']}")
+                result["service_address"] = None
+        
+        # Also validate service_address in each meter if present
+        for meter in result.get("meters", []):
+            if meter.get("service_address"):
+                cleaned_addr = validate_service_address(meter["service_address"])
+                if cleaned_addr:
+                    meter["service_address"] = cleaned_addr
+                else:
+                    print(f"[bill_extractor] Rejected meter address: {meter['service_address']}")
+                    meter["service_address"] = None
         
         utility_name = result.get("utility_name")
         account_number = result.get("customer_account") or result.get("account_number")
@@ -1147,7 +1234,6 @@ def regex_extract_all_fields(raw_text):
     
     # ========== SERVICE ADDRESS ==========
     # Universal patterns - look for labeled addresses and street patterns
-    # IMPORTANT: Patterns must be specific to avoid matching garbage like "Date bil prapated" or "The projected rate"
     address_patterns = [
         # Labeled SERVICE ADDRESS followed by street number (most reliable)
         r"SERVICE\s*ADDRESS[:\-]?\s*(\d{1,5}\s+[A-Z][A-Za-z0-9\s]+(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|RD|ROAD|WAY|LN|LANE|CT|COURT|PL|PLACE|CIR|CIRCLE|TRL|TRAIL|PKWY|PARKWAY)[^\n]{0,50})",
@@ -1159,42 +1245,20 @@ def regex_extract_all_fields(raw_text):
         r"(\d{2,5}\s+[A-Z][A-Za-z0-9\s]+(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|RD|ROAD|WAY|LN|LANE|CT|COURT|PL|PLACE)(?:\s*(?:#|APT|UNIT|STE|SUITE)\s*[A-Z0-9]+)?)",
     ]
     
-    # Common garbage strings that get misidentified as addresses
-    address_skip_patterns = [
-        "APM", "KVARH", "BASE KVARH", "METER NUMBER", "SERVES",
-        "DATE", "BILL", "PREPARED", "PROJECTED", "RATE", "GROUP",
-        "SAN FRANCISCO", "LOS ANGELES", "SAN DIEGO",  # City names without street
-        "ROTATING", "OUTAGE", "SCHEDULE", "CHARGES", "PAYMENT",
-        "CUSTOMER", "ACCOUNT", "SERVICE ACCOUNT"
-    ]
-    
     for pattern in address_patterns:
         match = re.search(pattern, raw_text, re.IGNORECASE)
         if match:
             addr = match.group(1).strip()
             # Clean up - stop at common field boundaries
             addr = re.split(r"\n\n|\nPOD-ID|\nBILLING|\nACCOUNT|\nMETER|\nRATE|\nNEXT|\nSERVICE\s*ACCOUNT|\nCUSTOMER", addr, maxsplit=1, flags=re.IGNORECASE)[0].strip()
-            # Remove trailing punctuation
             addr = addr.rstrip(',;:.')
             
-            # Skip if it contains garbage patterns
-            if any(skip in addr.upper() for skip in address_skip_patterns):
-                print(f"[regex_extract] Skipping garbage address: '{addr}'")
-                continue
-            
-            # CRITICAL: Must start with a street number (1-5 digits)
-            if not re.match(r'^\d{1,5}\s+', addr):
-                print(f"[regex_extract] Skipping address without street number: '{addr}'")
-                continue
-            
-            # Must have at least 10 chars with a street suffix
-            street_suffixes = r"(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|RD|ROAD|WAY|LN|LANE|CT|COURT|PL|PLACE|CIR|CIRCLE|TRL|TRAIL|PKWY|PARKWAY)"
-            if len(addr) >= 10 and re.search(street_suffixes, addr, re.IGNORECASE):
-                result["service_address"] = addr
+            # Use centralized validation function
+            validated_addr = validate_service_address(addr)
+            if validated_addr:
+                result["service_address"] = validated_addr
                 print(f"[regex_extract] service_address: {result['service_address']}")
                 break
-            else:
-                print(f"[regex_extract] Skipping address without street suffix: '{addr}'")
     
     # ========== RATE SCHEDULE ==========
     # Universal patterns for rate schedule/tariff across utilities
