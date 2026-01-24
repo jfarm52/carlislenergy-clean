@@ -518,6 +518,77 @@ def register(*, bills_bp, is_enabled, extraction_progress, populate_normalized_t
             print(f"[bills] Error clearing CSV imports: {e}")
             return jsonify({"success": False, "error": str(e)}), 500
 
+    @bills_bp.route("/api/projects/<project_id>/bills/delete-all", methods=["DELETE"])
+    def delete_all_bills_endpoint(project_id):
+        """
+        Delete ALL bills, files, accounts, and meters for a project.
+        Complete reset of bill data.
+        """
+        if not is_enabled():
+            return jsonify({"error": "Bills feature is disabled"}), 403
+
+        try:
+            conn = get_connection()
+            try:
+                with conn.cursor() as cur:
+                    # Get account IDs for this project
+                    cur.execute("SELECT id FROM utility_accounts WHERE project_id = %s", (project_id,))
+                    account_ids = [r[0] for r in cur.fetchall()]
+                    
+                    if not account_ids:
+                        # Also delete orphaned files
+                        cur.execute("DELETE FROM utility_bill_files WHERE project_id = %s", (project_id,))
+                        files_deleted = cur.rowcount
+                        conn.commit()
+                        return jsonify({
+                            "success": True,
+                            "bills_deleted": 0,
+                            "files_deleted": files_deleted,
+                            "accounts_deleted": 0,
+                            "message": f"Deleted {files_deleted} files (no accounts found)"
+                        })
+                    
+                    # Delete TOU periods first
+                    cur.execute("""
+                        DELETE FROM bill_tou_periods 
+                        WHERE bill_id IN (SELECT id FROM bills WHERE account_id = ANY(%s))
+                    """, (account_ids,))
+                    
+                    # Delete bills
+                    cur.execute("DELETE FROM bills WHERE account_id = ANY(%s)", (account_ids,))
+                    bills_deleted = cur.rowcount
+                    
+                    # Delete meters
+                    cur.execute("DELETE FROM utility_meters WHERE utility_account_id = ANY(%s)", (account_ids,))
+                    meters_deleted = cur.rowcount
+                    
+                    # Delete accounts
+                    cur.execute("DELETE FROM utility_accounts WHERE project_id = %s", (project_id,))
+                    accounts_deleted = cur.rowcount
+                    
+                    # Delete bill files
+                    cur.execute("DELETE FROM utility_bill_files WHERE project_id = %s", (project_id,))
+                    files_deleted = cur.rowcount
+                    
+                    conn.commit()
+                    
+                    print(f"[bills] Deleted all bills for project {project_id}: {bills_deleted} bills, {files_deleted} files, {accounts_deleted} accounts")
+                    return jsonify({
+                        "success": True,
+                        "bills_deleted": bills_deleted,
+                        "files_deleted": files_deleted,
+                        "accounts_deleted": accounts_deleted,
+                        "meters_deleted": meters_deleted,
+                        "message": f"Deleted {bills_deleted} bills, {files_deleted} files, {accounts_deleted} accounts"
+                    })
+            finally:
+                conn.close()
+        except Exception as e:
+            print(f"[bills] Error deleting all bills: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"success": False, "error": str(e)}), 500
+
     @bills_bp.route("/api/projects/<project_id>/bills/import-csv", methods=["POST"])
     def import_bills_csv_endpoint(project_id):
         """

@@ -10862,6 +10862,9 @@
                             <button id="embeddedBillImportCsvBtn" class="button secondary" style="font-size: 0.85rem; padding: 0.4rem 0.8rem;">
                                 📥 Import More
                             </button>
+                            <button id="embeddedBillDeleteAllBtn" class="button danger" style="font-size: 0.85rem; padding: 0.4rem 0.8rem;">
+                                🗑 Delete All
+                            </button>
                         </div>
                     </div>`;
                     html += '</div>';
@@ -10901,6 +10904,35 @@
                             const file = e.target.files[0];
                             e.target.value = '';
                             if (file) handleEmbeddedBillCsvImport(file, projectId);
+                        };
+                    }
+                    
+                    // Wire up delete all button
+                    const deleteAllBtn = document.getElementById('embeddedBillDeleteAllBtn');
+                    if (deleteAllBtn) {
+                        deleteAllBtn.onclick = async () => {
+                            const confirmed = await showConfirmModal({
+                                title: 'Delete All Bills',
+                                message: 'This will delete ALL bill data for this project (accounts, meters, bills). This cannot be undone.',
+                                confirmText: 'Delete All',
+                                cancelText: 'Cancel',
+                                danger: true
+                            });
+                            if (confirmed) {
+                                try {
+                                    const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/bills/delete-all`, { method: 'DELETE' });
+                                    const result = await response.json();
+                                    if (result.success) {
+                                        showToast(`Deleted ${result.bills_deleted} bills`, 'success');
+                                        renderEmbeddedBillsSection(); // Refresh
+                                    } else {
+                                        showToast(result.error || 'Failed to delete bills', 'error');
+                                    }
+                                } catch (err) {
+                                    console.error('[bills] Error deleting all:', err);
+                                    showToast('Error deleting bills', 'error');
+                                }
+                            }
                         };
                     }
                 } else {
