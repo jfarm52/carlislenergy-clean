@@ -18165,6 +18165,65 @@
                                 console.error("[bills] Error exporting bills CSV:", billsErr);
                                 billsUploadSuccess = false;
                             }
+                            
+                            // Step 6: Upload Bills Excel to Dropbox (formatted for proposal workbook)
+                            let excelUploaded = false;
+                            try {
+                                console.log(`[bills] Fetching bills Excel for project ${projectId}`);
+                                const excelResponse = await fetch(`/api/projects/${projectId}/bills/export-excel?customer=${encodeURIComponent(rawCompany)}`);
+                                const excelData = await excelResponse.json();
+                                
+                                if (excelData.success && excelData.excel) {
+                                    // Build excel filename with same timestamp
+                                    const excelFilename = `Utility_Summary_${namePart}_${timestamp}.xlsx`;
+                                    console.log(`[bills] Uploading bills Excel: ${excelFilename}`);
+                                    
+                                    // Convert base64 to blob
+                                    const excelBytes = atob(excelData.excel);
+                                    const excelArray = new Uint8Array(excelBytes.length);
+                                    for (let i = 0; i < excelBytes.length; i++) {
+                                        excelArray[i] = excelBytes.charCodeAt(i);
+                                    }
+                                    const excelBlob = new Blob([excelArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                                    
+                                    // Upload Excel to Dropbox
+                                    const excelFormData = new FormData();
+                                    excelFormData.append("file", excelBlob, excelFilename);
+                                    excelFormData.append("filename", excelFilename);
+                                    excelFormData.append("company", rawCompany);
+                                    excelFormData.append("utility", siteData.utility || 'Unknown');
+                                    excelFormData.append("street_address", siteData.street || 'Unknown');
+                                    
+                                    const excelUploadResponse = await fetch("/upload", {
+                                        method: "POST",
+                                        body: excelFormData
+                                    });
+                                    
+                                    const excelResult = await excelUploadResponse.json();
+                                    if (excelResult.ok) {
+                                        console.log("✓ Bills Excel uploaded to Dropbox:", excelResult);
+                                        excelUploaded = true;
+                                        
+                                        // Also trigger local download of Excel
+                                        const excelLink = document.createElement('a');
+                                        excelLink.href = URL.createObjectURL(excelBlob);
+                                        excelLink.download = excelFilename;
+                                        excelLink.style.display = 'none';
+                                        document.body.appendChild(excelLink);
+                                        excelLink.click();
+                                        setTimeout(() => {
+                                            document.body.removeChild(excelLink);
+                                            URL.revokeObjectURL(excelLink.href);
+                                        }, 100);
+                                    } else {
+                                        console.warn("⚠ Bills Excel upload failed:", excelResult);
+                                    }
+                                } else {
+                                    console.log("[bills] No bills Excel to export (no bills or export failed)");
+                                }
+                            } catch (excelErr) {
+                                console.error("[bills] Error exporting bills Excel:", excelErr);
+                            }
                         }
                         
                         // Show final status with all upload results
@@ -18181,8 +18240,10 @@
                             else failedParts.push('photos');
                         }
                         
-                        if (billsUploaded) successParts.push('bills');
-                        else if (!billsUploadSuccess) failedParts.push('bills');
+                        if (billsUploaded) successParts.push('bills CSV');
+                        else if (!billsUploadSuccess) failedParts.push('bills CSV');
+                        
+                        if (typeof excelUploaded !== 'undefined' && excelUploaded) successParts.push('Excel');
                         
                         if (failedParts.length === 0) {
                             // Full success

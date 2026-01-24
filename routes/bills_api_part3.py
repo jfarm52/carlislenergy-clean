@@ -8,6 +8,7 @@ Registered from the main `routes/bills_api.py` module.
 from __future__ import annotations
 
 import base64
+import io
 import os
 
 from flask import jsonify, request, send_file
@@ -452,6 +453,47 @@ def register(*, bills_bp, is_enabled, extraction_progress, populate_normalized_t
             return jsonify({"success": True, "csv": csv_content})
         except Exception as e:
             print(f"[bills] Error exporting bills CSV: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
+
+    @bills_bp.route("/api/projects/<project_id>/bills/export-excel", methods=["GET"])
+    def export_bills_excel_endpoint(project_id):
+        """
+        Export bills as formatted Excel file for proposal workbook.
+        Returns the .xlsx file as base64 or as direct download.
+        """
+        if not is_enabled():
+            return jsonify({"error": "Bills feature is disabled"}), 403
+
+        try:
+            from bill_intake.db.export import export_bills_excel
+            import base64
+            
+            # Get customer name from query param (optional)
+            customer_name = request.args.get("customer", "")
+            
+            excel_bytes = export_bills_excel(project_id, customer_name)
+            if excel_bytes is None:
+                return jsonify({"success": False, "error": "No bills found for this project"})
+            
+            # Check if caller wants direct download or base64
+            if request.args.get("download") == "true":
+                return send_file(
+                    io.BytesIO(excel_bytes),
+                    mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    as_attachment=True,
+                    download_name=f"Utility_Summary_{customer_name or project_id}.xlsx"
+                )
+            
+            # Return as base64 for JS to handle
+            return jsonify({
+                "success": True,
+                "excel": base64.b64encode(excel_bytes).decode("utf-8"),
+                "filename": f"Utility_Summary_{customer_name or 'Export'}.xlsx"
+            })
+        except Exception as e:
+            print(f"[bills] Error exporting bills Excel: {e}")
+            import traceback
+            traceback.print_exc()
             return jsonify({"success": False, "error": str(e)}), 500
 
     @bills_bp.route("/api/projects/<project_id>/bills/clear-csv-imports", methods=["DELETE"])
