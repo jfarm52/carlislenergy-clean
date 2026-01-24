@@ -600,29 +600,28 @@ def export_bills_excel(project_id, customer_name=""):
                 ws[f'{col}12'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
                 ws[f'{col}12'].alignment = center
                 ws[f'{col}12'].border = thin_border
-            ws['F12'].border = thin_border  # Right border on merged cell
+            ws['F12'].border = thin_border
             
-            # TOU data with colored header cells
+            # TOU data - colored text only, no fill
             tou_data = []
             if tou_on_kwh > 0:
-                tou_data.append(("On-Peak", tou_on_kwh, tou_on_cost, "C0392B"))  # Dark red
+                tou_data.append(("On-Peak", tou_on_kwh, tou_on_cost, "C00000"))  # Dark Red (Excel standard)
             if tou_mid_kwh > 0:
-                tou_data.append(("Mid-Peak", tou_mid_kwh, tou_mid_cost, "D68910"))  # Dark orange
+                tou_data.append(("Mid-Peak", tou_mid_kwh, tou_mid_cost, "BF9000"))  # Dark Yellow/Gold
             if tou_off_kwh > 0:
-                tou_data.append(("Off-Peak", tou_off_kwh, tou_off_cost, "1E8449"))  # Dark green
+                tou_data.append(("Off-Peak", tou_off_kwh, tou_off_cost, "375623"))  # Dark Green (Excel standard)
             if tou_super_off_kwh > 0:
-                tou_data.append(("Super Off-Peak", tou_super_off_kwh, tou_super_off_cost, "2874A6"))  # Dark blue
+                tou_data.append(("Super Off-Peak", tou_super_off_kwh, tou_super_off_cost, "31869B"))  # Teal/Aqua Accent 5 Darker
             
             row = 13
             for period, kwh, cost, color in tou_data:
                 rate = (cost / kwh * 100) if kwh > 0 else 0
                 pct = (kwh / total_kwh * 100) if total_kwh > 0 else 0
                 
-                # Period name - filled cell with white text, centered
+                # Period name - colored text, no fill, right aligned
                 ws[f'A{row}'] = period
-                ws[f'A{row}'].font = Font(name='Arial', size=10, bold=True, color=white)
-                ws[f'A{row}'].fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
-                ws[f'A{row}'].alignment = center
+                ws[f'A{row}'].font = Font(name='Arial', size=10, bold=True, color=color)
+                ws[f'A{row}'].alignment = right_align
                 ws[f'A{row}'].border = thin_border
                 
                 ws[f'B{row}'] = kwh
@@ -646,7 +645,7 @@ def export_bills_excel(project_id, customer_name=""):
                 ws[f'E{row}'].number_format = '0.0%'
                 ws[f'E{row}'].alignment = center
                 ws[f'E{row}'].border = thin_border
-                ws[f'F{row}'].border = thin_border  # Right border
+                ws[f'F{row}'].border = thin_border
                 
                 row += 1
             
@@ -725,46 +724,50 @@ def export_bills_excel(project_id, customer_name=""):
                 
                 row += 1
             
-            # Totals row
+            # Totals row - taller, bottom-aligned, thick top border
+            ws.row_dimensions[row].height = 28
+            bottom_align = Alignment(horizontal='right', vertical='bottom')
+            bottom_center = Alignment(horizontal='center', vertical='bottom')
+            total_border = Border(
+                left=Side(style='thin', color='BDC3C7'),
+                right=Side(style='thin', color='BDC3C7'),
+                top=Side(style='medium', color=primary_dark),
+                bottom=Side(style='thin', color='BDC3C7')
+            )
+            
             ws[f'A{row}'] = "TOTAL"
             ws[f'A{row}'].font = Font(name='Arial', size=10, bold=True)
-            ws[f'A{row}'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
-            ws[f'A{row}'].alignment = center
-            ws[f'A{row}'].border = thin_border
+            ws[f'A{row}'].alignment = bottom_center
+            ws[f'A{row}'].border = total_border
             
             ws[f'B{row}'] = total_kwh
             ws[f'B{row}'].number_format = '#,##0'
             ws[f'B{row}'].font = Font(bold=True)
-            ws[f'B{row}'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
-            ws[f'B{row}'].alignment = right_align
-            ws[f'B{row}'].border = thin_border
+            ws[f'B{row}'].alignment = bottom_align
+            ws[f'B{row}'].border = total_border
             
             ws[f'C{row}'] = total_cost
             ws[f'C{row}'].number_format = '"$"#,##0.00'
             ws[f'C{row}'].font = Font(bold=True)
-            ws[f'C{row}'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
-            ws[f'C{row}'].alignment = right_align
-            ws[f'C{row}'].border = thin_border
+            ws[f'C{row}'].alignment = bottom_align
+            ws[f'C{row}'].border = total_border
             
             ws[f'D{row}'] = avg_rate
             ws[f'D{row}'].number_format = '0.0'
             ws[f'D{row}'].font = Font(bold=True)
-            ws[f'D{row}'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
-            ws[f'D{row}'].alignment = right_align
-            ws[f'D{row}'].border = thin_border
+            ws[f'D{row}'].alignment = bottom_align
+            ws[f'D{row}'].border = total_border
             
             ws[f'E{row}'] = total_days
             ws[f'E{row}'].font = Font(bold=True)
-            ws[f'E{row}'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
-            ws[f'E{row}'].alignment = right_align
-            ws[f'E{row}'].border = thin_border
+            ws[f'E{row}'].alignment = bottom_align
+            ws[f'E{row}'].border = total_border
             
             ws[f'F{row}'] = avg_daily_cost
             ws[f'F{row}'].number_format = '"$"#,##0.00'
             ws[f'F{row}'].font = Font(bold=True)
-            ws[f'F{row}'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
-            ws[f'F{row}'].alignment = right_align
-            ws[f'F{row}'].border = thin_border
+            ws[f'F{row}'].alignment = bottom_align
+            ws[f'F{row}'].border = total_border
             
             # ========== RAW DATA (Hidden columns for formulas) ==========
             raw_start_col = 27  # Column AA
