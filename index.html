@@ -10794,9 +10794,13 @@
                 clearTimeout(timeoutId);
                 groupedData = response.ok ? await response.json() : { files: [], accounts: [] };
                 const files = groupedData.files || [];
+                const accounts = groupedData.accounts || [];
                 
-                if (files.length === 0) {
-                    // No bills uploaded - show upload interface
+                // Check if we have bills from CSV import (no files but have accounts with bills)
+                const hasBillsFromCsv = files.length === 0 && accounts.length > 0;
+                
+                if (files.length === 0 && !hasBillsFromCsv) {
+                    // No bills uploaded and no CSV imports - show upload interface
                     container.innerHTML = `
                         <div class="embedded-bills-upload">
                             <p style="color: #666; margin-bottom: 1rem;">📤 Upload PDF utility bills to extract account, meter, and usage data automatically.</p>
@@ -10844,8 +10848,63 @@
                             if (file) handleEmbeddedBillCsvImport(file, projectId);
                         };
                     }
+                } else if (hasBillsFromCsv) {
+                    // Bills imported from CSV (no files, but have accounts) - show extracted data only
+                    let html = '<div class="embedded-bills-csv-import">';
+                    html += `<div style="background: #e8f5e9; border: 1px solid #4caf50; border-radius: 4px; padding: 0.75rem 1rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: #2e7d32;">✓ Bills imported from CSV (${accounts.reduce((sum, a) => sum + (a.meters || []).reduce((ms, m) => ms + (m.bills?.length || 0), 0), 0)} bills)</span>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="file" id="embeddedBillFileInput" accept=".pdf,image/*" multiple style="display:none;">
+                            <button id="embeddedBillUploadBtn" class="button secondary" style="font-size: 0.85rem; padding: 0.4rem 0.8rem;">
+                                + Add PDFs
+                            </button>
+                            <input type="file" id="embeddedBillCsvInput" accept=".csv" style="display:none;">
+                            <button id="embeddedBillImportCsvBtn" class="button secondary" style="font-size: 0.85rem; padding: 0.4rem 0.8rem;">
+                                📥 Import More
+                            </button>
+                        </div>
+                    </div>`;
+                    html += '</div>';
+                    
+                    container.innerHTML = html;
+                    
+                    // Render extracted data section
+                    const extractedDataContainer = document.createElement('div');
+                    extractedDataContainer.className = 'embedded-bills-data';
+                    extractedDataContainer.innerHTML = '<div style="color: #666; text-align: center;">Loading...</div>';
+                    container.appendChild(extractedDataContainer);
+                    
+                    // Fetch and render extracted data with facility totals
+                    const extractedHtml = await renderEmbeddedExtractedData(projectId);
+                    extractedDataContainer.innerHTML = '<h4 style="margin: 0 0 0.75rem 0; color: #333;">Extracted Data</h4>' + extractedHtml;
+                    
+                    // Setup click handlers for bill dropdowns
+                    setupEmbeddedBillClickHandlers();
+                    
+                    // Wire up buttons
+                    const uploadBtn = document.getElementById('embeddedBillUploadBtn');
+                    const fileInput = document.getElementById('embeddedBillFileInput');
+                    if (uploadBtn && fileInput) {
+                        uploadBtn.onclick = () => fileInput.click();
+                        fileInput.onchange = (e) => { 
+                            const filesArray = Array.from(e.target.files);
+                            e.target.value = '';
+                            handleEmbeddedBillUpload(filesArray);
+                        };
+                    }
+                    
+                    const csvImportBtn = document.getElementById('embeddedBillImportCsvBtn');
+                    const csvInput = document.getElementById('embeddedBillCsvInput');
+                    if (csvImportBtn && csvInput) {
+                        csvImportBtn.onclick = () => csvInput.click();
+                        csvInput.onchange = (e) => {
+                            const file = e.target.files[0];
+                            e.target.value = '';
+                            if (file) handleEmbeddedBillCsvImport(file, projectId);
+                        };
+                    }
                 } else {
-                    // Bills exist - show files and extracted data
+                    // Bills exist (from uploaded files) - show files and extracted data
                     let html = '';
                     
                     // Check if any files are still processing (should default expanded)

@@ -9,6 +9,59 @@ from bill_intake.db.connection import get_connection
 from bill_intake.db.accounts import upsert_utility_account
 from bill_intake.db.meters import upsert_utility_meter
 from bill_intake.db.bills_write import insert_bill
+from psycopg2.extras import RealDictCursor
+
+
+def _bill_exists(meter_id, period_start, period_end, total_kwh, total_amount):
+    """Check if a bill with the same key fields already exists."""
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            # Match on meter + period + kwh + amount (handles duplicates)
+            cur.execute(
+                """
+                SELECT 1 FROM bills
+                WHERE meter_id = %s
+                  AND period_start = %s
+                  AND period_end = %s
+                  AND total_kwh = %s
+                  AND total_amount_due = %s
+                LIMIT 1
+                """,
+                (meter_id, period_start, period_end, total_kwh, total_amount),
+            )
+            return cur.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def delete_csv_imported_bills(project_id):
+    """
+    Delete all CSV-imported bills for a project (bills with bill_file_id = NULL).
+    Returns count of deleted bills.
+    """
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            # Delete bills that were imported from CSV (no file association)
+            cur.execute(
+                """
+                DELETE FROM bills
+                WHERE bill_file_id IS NULL
+                  AND account_id IN (SELECT id FROM utility_accounts WHERE project_id = %s)
+                """,
+                (project_id,),
+            )
+            deleted = cur.rowcount
+            conn.commit()
+            print(f"[import] Deleted {deleted} CSV-imported bills for project {project_id}")
+            return deleted
+    except Exception as e:
+        conn.rollback()
+        print(f"[import] Error deleting CSV bills: {e}")
+        raise
+    finally:
+        conn.close()
 
 
 def export_bills_csv(project_id):
@@ -267,6 +320,16 @@ def import_bills_csv(project_id, csv_content):
                 if meter_key not in seen_meters:
                     seen_meters.add(meter_key)
                     stats["meters_created"] += 1
+                
+                # Check for duplicate bill (same meter + period + amount)
+                period_start = parse_date(data.get("period_start"))
+                period_end = parse_date(data.get("period_end"))
+                total_kwh = parse_float(data.get("total_kwh"))
+                total_amount = parse_float(data.get("total_amount_due"))
+                
+                if _bill_exists(meter_id, period_start, period_end, total_kwh, total_amount):
+                    stats["rows_skipped"] += 1
+                    continue
                 
                 # Insert bill (bill_file_id = None since imported from CSV)
                 bill_id = insert_bill(

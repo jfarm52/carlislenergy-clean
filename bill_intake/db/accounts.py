@@ -50,9 +50,9 @@ def get_utility_accounts_for_project(project_id, service_filter=None):
                     SELECT DISTINCT a.id, a.project_id, a.utility_name, a.account_number, a.created_at
                     FROM utility_accounts a
                     JOIN bills b ON b.account_id = a.id
-                    JOIN utility_bill_files ubf ON b.bill_file_id = ubf.id
+                    LEFT JOIN utility_bill_files ubf ON b.bill_file_id = ubf.id
                     WHERE a.project_id = %s
-                      AND (ubf.service_type IN ('electric', 'combined') OR ubf.service_type IS NULL)
+                      AND (b.bill_file_id IS NULL OR ubf.service_type IN ('electric', 'combined') OR ubf.service_type IS NULL)
                       AND b.total_kwh > 0
                     ORDER BY a.utility_name
                     """,

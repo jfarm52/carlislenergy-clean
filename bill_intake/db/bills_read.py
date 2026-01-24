@@ -53,9 +53,9 @@ def get_grouped_bills_data(project_id, service_filter=None):
                     SELECT DISTINCT a.id, a.utility_name, a.account_number
                     FROM utility_accounts a
                     JOIN bills b ON b.account_id = a.id
-                    JOIN utility_bill_files ubf ON b.bill_file_id = ubf.id
+                    LEFT JOIN utility_bill_files ubf ON b.bill_file_id = ubf.id
                     WHERE a.project_id = %s
-                      AND (ubf.service_type IN ('electric', 'combined') OR ubf.service_type IS NULL)
+                      AND (b.bill_file_id IS NULL OR ubf.service_type IN ('electric', 'combined') OR ubf.service_type IS NULL)
                       AND b.total_kwh > 0
                     ORDER BY a.utility_name, a.account_number
                     """,
@@ -88,9 +88,9 @@ def get_grouped_bills_data(project_id, service_filter=None):
                         SELECT DISTINCT m.id, m.meter_number
                         FROM utility_meters m
                         JOIN bills b ON b.meter_id = m.id
-                        JOIN utility_bill_files ubf ON b.bill_file_id = ubf.id
+                        LEFT JOIN utility_bill_files ubf ON b.bill_file_id = ubf.id
                         WHERE m.utility_account_id = %s
-                          AND (ubf.service_type IN ('electric', 'combined') OR ubf.service_type IS NULL)
+                          AND (b.bill_file_id IS NULL OR ubf.service_type IN ('electric', 'combined') OR ubf.service_type IS NULL)
                           AND b.total_kwh > 0
                         ORDER BY m.meter_number
                         """,
@@ -116,11 +116,11 @@ def get_grouped_bills_data(project_id, service_filter=None):
                             """
                             SELECT DISTINCT b.id, b.bill_file_id, b.period_start, b.period_end,
                                    b.total_kwh, b.total_amount_due,
-                                   ubf.original_filename AS source_file
+                                   COALESCE(ubf.original_filename, 'CSV Import') AS source_file
                             FROM bills b
-                            JOIN utility_bill_files ubf ON b.bill_file_id = ubf.id
+                            LEFT JOIN utility_bill_files ubf ON b.bill_file_id = ubf.id
                             WHERE b.meter_id = %s
-                              AND (ubf.service_type IN ('electric', 'combined') OR ubf.service_type IS NULL)
+                              AND (b.bill_file_id IS NULL OR ubf.service_type IN ('electric', 'combined') OR ubf.service_type IS NULL)
                               AND b.total_kwh > 0
                             ORDER BY b.period_end DESC
                             """,
@@ -197,8 +197,8 @@ def get_account_summary(account_id, service_filter=None):
     conn = get_connection()
     try:
         if service_filter == "electric":
-            service_join = "JOIN utility_bill_files ubf ON b.bill_file_id = ubf.id"
-            service_condition = "AND (ubf.service_type IN ('electric', 'combined') OR ubf.service_type IS NULL) AND b.total_kwh > 0"
+            service_join = "LEFT JOIN utility_bill_files ubf ON b.bill_file_id = ubf.id"
+            service_condition = "AND (b.bill_file_id IS NULL OR ubf.service_type IN ('electric', 'combined') OR ubf.service_type IS NULL) AND b.total_kwh > 0"
         else:
             service_join = ""
             service_condition = ""

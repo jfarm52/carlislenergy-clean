@@ -454,6 +454,28 @@ def register(*, bills_bp, is_enabled, extraction_progress, populate_normalized_t
             print(f"[bills] Error exporting bills CSV: {e}")
             return jsonify({"success": False, "error": str(e)}), 500
 
+    @bills_bp.route("/api/projects/<project_id>/bills/clear-csv-imports", methods=["DELETE"])
+    def clear_csv_imports_endpoint(project_id):
+        """
+        Delete all CSV-imported bills for a project.
+        Use this to clean up before re-importing.
+        """
+        if not is_enabled():
+            return jsonify({"error": "Bills feature is disabled"}), 403
+
+        try:
+            from bill_intake.db.export import delete_csv_imported_bills
+            
+            deleted = delete_csv_imported_bills(project_id)
+            return jsonify({
+                "success": True,
+                "deleted": deleted,
+                "message": f"Deleted {deleted} CSV-imported bills"
+            })
+        except Exception as e:
+            print(f"[bills] Error clearing CSV imports: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
+
     @bills_bp.route("/api/projects/<project_id>/bills/import-csv", methods=["POST"])
     def import_bills_csv_endpoint(project_id):
         """
