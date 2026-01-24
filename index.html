@@ -18201,8 +18201,11 @@
                             }
                             
                             // Step 6: Upload Bills Excel to Dropbox (formatted for proposal workbook)
+                            // NOTE: Disabled due to Python 3.14 alpha incompatibility with lxml/openpyxl
+                            // Re-enable when using stable Python version
                             let excelUploaded = false;
-                            try {
+                            const EXCEL_EXPORT_ENABLED = false; // Set to true when Python 3.14 stable is released
+                            if (EXCEL_EXPORT_ENABLED) try {
                                 console.log(`[bills] Fetching bills Excel for project ${projectId}`);
                                 const excelResponse = await fetch(`/api/projects/${projectId}/bills/export-excel?customer=${encodeURIComponent(rawCompany)}`);
                                 const excelData = await excelResponse.json();
