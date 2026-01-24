@@ -588,37 +588,41 @@ def export_bills_excel(project_id, customer_name=""):
             ws['A11'].alignment = center
             ws.row_dimensions[11].height = 25
             
-            # TOU headers
+            # TOU headers - merge E and F for cleaner look
             row = 12
-            tou_headers = ["Period", "Usage (kWh)", "Cost", "Rate (¢/kWh)", "% of Total", ""]
+            tou_headers = ["Period", "Usage (kWh)", "Cost", "Rate (¢/kWh)", "% of Total"]
             for i, header in enumerate(tou_headers):
                 col = get_column_letter(i + 1)
+                if i == 4:  # % of Total - merge E and F
+                    ws.merge_cells('E12:F12')
                 ws[f'{col}12'] = header
                 ws[f'{col}12'].font = Font(name='Arial', size=10, bold=True, color=dark_text)
                 ws[f'{col}12'].fill = PatternFill(start_color=light_gray, end_color=light_gray, fill_type="solid")
                 ws[f'{col}12'].alignment = center
                 ws[f'{col}12'].border = thin_border
+            ws['F12'].border = thin_border  # Right border on merged cell
             
-            # TOU data - using subtle shading instead of rainbow colors
+            # TOU data with colored header cells
             tou_data = []
             if tou_on_kwh > 0:
-                tou_data.append(("On-Peak", tou_on_kwh, tou_on_cost, "E74C3C"))  # Muted red
+                tou_data.append(("On-Peak", tou_on_kwh, tou_on_cost, "C0392B"))  # Dark red
             if tou_mid_kwh > 0:
-                tou_data.append(("Mid-Peak", tou_mid_kwh, tou_mid_cost, "F39C12"))  # Muted orange
+                tou_data.append(("Mid-Peak", tou_mid_kwh, tou_mid_cost, "D68910"))  # Dark orange
             if tou_off_kwh > 0:
-                tou_data.append(("Off-Peak", tou_off_kwh, tou_off_cost, "27AE60"))  # Muted green
+                tou_data.append(("Off-Peak", tou_off_kwh, tou_off_cost, "1E8449"))  # Dark green
             if tou_super_off_kwh > 0:
-                tou_data.append(("Super Off-Peak", tou_super_off_kwh, tou_super_off_cost, "3498DB"))  # Muted blue
+                tou_data.append(("Super Off-Peak", tou_super_off_kwh, tou_super_off_cost, "2874A6"))  # Dark blue
             
             row = 13
             for period, kwh, cost, color in tou_data:
                 rate = (cost / kwh * 100) if kwh > 0 else 0
                 pct = (kwh / total_kwh * 100) if total_kwh > 0 else 0
                 
-                # Period name with color indicator (small bar)
+                # Period name - filled cell with white text, centered
                 ws[f'A{row}'] = period
-                ws[f'A{row}'].font = Font(name='Arial', size=10, bold=True, color=color)
-                ws[f'A{row}'].alignment = left_align
+                ws[f'A{row}'].font = Font(name='Arial', size=10, bold=True, color=white)
+                ws[f'A{row}'].fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+                ws[f'A{row}'].alignment = center
                 ws[f'A{row}'].border = thin_border
                 
                 ws[f'B{row}'] = kwh
@@ -636,14 +640,13 @@ def export_bills_excel(project_id, customer_name=""):
                 ws[f'D{row}'].alignment = right_align
                 ws[f'D{row}'].border = thin_border
                 
+                # % of Total - merge E and F, centered
+                ws.merge_cells(f'E{row}:F{row}')
                 ws[f'E{row}'] = pct / 100
                 ws[f'E{row}'].number_format = '0.0%'
-                ws[f'E{row}'].alignment = right_align
+                ws[f'E{row}'].alignment = center
                 ws[f'E{row}'].border = thin_border
-                
-                # Color bar indicator
-                ws[f'F{row}'].fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
-                ws[f'F{row}'].border = thin_border
+                ws[f'F{row}'].border = thin_border  # Right border
                 
                 row += 1
             
