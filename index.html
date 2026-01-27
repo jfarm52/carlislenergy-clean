@@ -4129,6 +4129,181 @@
             cursor: pointer;
             font-size: 0.85rem;
         }
+
+        /* ==================== PRINT VIEW (PDF STYLE) ==================== */
+        .print-view-wrapper {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 16px;
+        }
+        .print-view-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #ddd;
+            position: sticky;
+            top: 0;
+            background: #fff;
+            z-index: 5;
+        }
+        .print-view-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .print-view-controls-hidden .print-view-header {
+            display: none;
+        }
+        .print-view-content {
+            cursor: pointer;
+        }
+
+        .print-project {
+            max-width: 1100px;
+            margin: 0 auto;
+            color: #333;
+        }
+        .print-project .header {
+            background: linear-gradient(135deg, #1e5a99 0%, #2d7bb8 100%);
+            color: #fff;
+            padding: 12px 16px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            text-align: center;
+        }
+        .print-project .header-title {
+            font-size: 1.35rem;
+            font-weight: 700;
+            margin: 0 0 6px 0;
+        }
+        .print-project .header-row {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 4px 20px;
+            font-size: 0.85rem;
+            opacity: 0.95;
+        }
+        .print-project .header-row span {
+            white-space: nowrap;
+        }
+        .print-project .header-row .label {
+            opacity: 0.8;
+        }
+
+        .print-project h2 {
+            color: #1e5a99;
+            font-size: 1.1rem;
+            border-bottom: 2px solid #2d7bb8;
+            padding-bottom: 3px;
+            margin: 14px 0 10px 0;
+        }
+        .print-room {
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 8px 12px;
+            margin-bottom: 10px;
+            page-break-inside: avoid;
+        }
+        .print-room .room-title {
+            font-weight: 700;
+            font-size: 1.05rem;
+            color: #1e5a99;
+            margin-bottom: 2px;
+        }
+        .print-room-mfr {
+            font-size: 0.85rem;
+            margin-bottom: 4px;
+        }
+        .mfr-label {
+            font-weight: 400;
+            color: #777;
+        }
+        .mfr-value {
+            font-weight: 400;
+            color: #000;
+        }
+        .spec-label {
+            font-weight: 700;
+            color: #000;
+        }
+        .spec-value {
+            font-weight: 400;
+            color: #000;
+        }
+        .spec-item {
+            white-space: nowrap;
+            display: inline-block;
+        }
+        .print-room-info {
+            font-size: 0.8rem;
+            color: #555;
+            margin-bottom: 4px;
+        }
+        .print-room-specs {
+            display: flex;
+            justify-content: space-between;
+            gap: 30px;
+            margin-bottom: 4px;
+        }
+        .spec-column {
+            flex: 1;
+            text-align: left;
+        }
+        .spec-line {
+            margin-bottom: 2px;
+            font-size: 0.9rem;
+            color: #333;
+            white-space: normal;
+            line-height: 1.4;
+        }
+        .print-notes-separator {
+            border: 0;
+            border-top: 1px solid #e0e0e0;
+            margin: 5px 0 3px 0;
+        }
+        .print-room-notes {
+            font-size: 0.85rem;
+            line-height: 1.3;
+        }
+        .print-room-notes .notes-label {
+            font-weight: 600;
+        }
+        .print-room-notes .notes-text {
+            font-weight: normal;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            color: #555;
+        }
+
+        @media print {
+            .print-view-header {
+                display: none !important;
+            }
+            #printViewContainer {
+                display: block;
+            }
+            body * {
+                visibility: hidden;
+            }
+            #printViewContainer,
+            #printViewContainer * {
+                visibility: visible;
+            }
+            #printViewContainer {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                padding: 0;
+                margin: 0;
+            }
+            .print-view-wrapper {
+                padding: 0.4in 0.5in;
+            }
+        }
         
         @media (max-width: 600px) {
             .home-title {
@@ -5053,15 +5228,15 @@
 
     <!-- ==================== PRINT VIEW ==================== -->
     <div id="printViewContainer" class="app-view">
-        <div style="max-width: 1100px; margin: 0 auto; padding: 16px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #ddd;">
+        <div class="print-view-wrapper">
+            <div id="printViewHeader" class="print-view-header">
                 <button id="printViewBackBtn" class="button secondary" onclick="NavigationController.setView('currentProject')">← Back to Project</button>
-                <div style="display: flex; gap: 0.5rem;">
+                <div class="print-view-actions">
                     <button id="printViewDownloadBtn" class="button primary" onclick="NavigationController.downloadPrintPdf()">📥 Download PDF</button>
                     <button class="button secondary" onclick="window.print()">🖨️ Print</button>
                 </div>
             </div>
-            <div id="printViewContent">
+            <div id="printViewContent" class="print-view-content">
                 <!-- Content populated by renderPrintView() -->
             </div>
         </div>
@@ -7483,8 +7658,11 @@
                 // Format date for display
                 const visitDateDisplay = sd.visitDate || formatDateForDisplay(sd.date) || '';
                 
-                // Build card title: Just RoomName
+                // Build card title: Just RoomName (with fallback)
                 const buildCardTitle = (entry, fallback) => entry['room-name'] || entry['room-roomname'] || fallback;
+                
+                // Helper to wrap label:value pairs and keep them together
+                const specPair = (label, value) => `<span class="spec-item"><span class="spec-label">${label}:</span> <span class="spec-value">${value}</span></span>`;
                 
                 // Build Mfr line
                 const buildMfrHtml = (entry) => {
@@ -7504,29 +7682,26 @@
                     return parts.length > 0 ? `<div class="print-room-info">${parts.join(' | ')}</div>` : '';
                 };
                 
-                // Helper to wrap label:value pairs
-                const specPair = (label, value) => `<span class="spec-label">${label}:</span> <span class="spec-value">${value}</span>`;
-                
-                // Build spec columns
+                // Build spec columns (matches PDF format)
                 const buildSpecColumns = (entry, isEvap) => {
                     let leftLines = [];
                     let rightLines = [];
                     
-                    // Left column specs
+                    const unitLabel = isEvap ? 'Evaporators' : 'Condensers';
+                    
                     let line1 = [];
-                    if (entry['room-count']) line1.push(specPair('Units', entry['room-count']));
-                    if (entry['room-fanMotorsPerUnit']) line1.push(specPair('Motors Per Unit', entry['room-fanMotorsPerUnit']));
+                    if (entry['room-count']) line1.push(specPair(unitLabel, entry['room-count']));
+                    if (entry['room-fanMotorsPerUnit']) line1.push(specPair('Motors Ea', entry['room-fanMotorsPerUnit']));
                     if (line1.length > 0) leftLines.push(line1.join(' | '));
                     
                     let line2 = [];
-                    if (entry['room-voltage']) line2.push(specPair('Voltage', entry['room-voltage']));
-                    if (entry['room-phase']) line2.push(specPair('Phase', entry['room-phase']));
-                    if (entry['room-amps']) line2.push(specPair('FLA', entry['room-amps']));
+                    if (entry['room-voltage']) line2.push(specPair('V', entry['room-voltage']));
+                    if (entry['room-phase']) line2.push(specPair('Ph', entry['room-phase']));
+                    if (entry['room-amps']) line2.push(specPair('FLA Ea', entry['room-amps']));
                     if (entry['room-hp']) line2.push(specPair('HP', entry['room-hp']));
                     if (entry['room-rpm']) line2.push(specPair('RPM', entry['room-rpm']));
                     if (line2.length > 0) leftLines.push(line2.join(' | '));
                     
-                    // Right column specs
                     let rLine1 = [];
                     if (entry['room-frame']) rLine1.push(specPair('Frame', entry['room-frame']));
                     if (entry['room-motorMounting']) {
@@ -7539,12 +7714,12 @@
                     
                     let rLine2 = [];
                     if (entry['room-shaftAdapterQty'] && Number(entry['room-shaftAdapterQty']) > 0 && entry['room-shaftAdapterType']) {
-                        rLine2.push(`<span class="spec-label">Adapters:</span> <span class="spec-value">(${entry['room-shaftAdapterQty']}) ${entry['room-shaftAdapterType']}</span>`);
+                        rLine2.push(`<span class="spec-item"><span class="spec-label">Adapters:</span> <span class="spec-value">(${entry['room-shaftAdapterQty']}) ${entry['room-shaftAdapterType']}</span></span>`);
                     }
                     if (entry['room-bladesNeeded'] && Number(entry['room-bladesNeeded']) > 0 && entry['room-bladeSpec']) {
-                        rLine2.push(`<span class="spec-label">FanBlade(s):</span> <span class="spec-value">(${entry['room-bladesNeeded']}) ${entry['room-bladeSpec']}</span>`);
+                        rLine2.push(`<span class="spec-item"><span class="spec-label">FanBlade(s):</span> <span class="spec-value">(${entry['room-bladesNeeded']}) ${entry['room-bladeSpec']}</span></span>`);
                     } else if (entry['room-bladeSpec']) {
-                        rLine2.push(`<span class="spec-label">FanBlade(s):</span> <span class="spec-value">${entry['room-bladeSpec']}</span>`);
+                        rLine2.push(`<span class="spec-item"><span class="spec-label">FanBlade(s):</span> <span class="spec-value">${entry['room-bladeSpec']}</span></span>`);
                     }
                     if (rLine2.length > 0) rightLines.push(rLine2.join(' | '));
                     
@@ -7559,56 +7734,91 @@
                     return `<div class="print-room-specs"><div class="spec-column spec-left">${leftHtml}</div><div class="spec-column spec-right">${rightHtml}</div></div>`;
                 };
                 
-                // Build HTML content
+                // Build compact address string
+                const addressParts = [];
+                if (sd.street) addressParts.push(sd.street);
+                const cityStateZip = [];
+                if (sd.city) cityStateZip.push(sd.city);
+                if (sd.state) cityStateZip.push(sd.state);
+                if (sd.zip) cityStateZip.push(sd.zip);
+                if (cityStateZip.length > 0) {
+                    const cs = cityStateZip.slice(0, 2).join(', ') + (cityStateZip[2] ? ` ${cityStateZip[2]}` : '');
+                    addressParts.push(cs);
+                }
+                const fullAddress = addressParts.filter(Boolean).join(', ');
+                const contactName = sd.contact || '';
+                const contactPhone = sd.phone || '';
+                
+                // Build HTML content (PDF format)
                 let html = `
-                    <h1 style="color:#1e5a99; margin-bottom:0.5rem;">${sd.customer || 'Project'}</h1>
-                    <div class="site-info" style="background:#f5f5f5; padding:0.75rem 1rem; border-radius:4px; margin-bottom:1.5rem;">
-                        <p style="margin:0.2rem 0; font-size:0.95rem;"><strong>Address:</strong> ${sd.street || ''}, ${sd.city || ''}, ${sd.state || ''} ${sd.zip || ''}</p>
-                        <p style="margin:0.2rem 0; font-size:0.95rem;"><strong>Contact:</strong> ${sd.contact || ''} ${sd.phone ? '(' + sd.phone + ')' : ''}</p>
-                        <p style="margin:0.2rem 0; font-size:0.95rem;"><strong>Utility:</strong> ${sd.utility || ''}</p>
-                        <p style="margin:0.2rem 0; font-size:0.95rem;"><strong>Date of Site Visit:</strong> ${visitDateDisplay}</p>
-                    </div>`;
+                    <div class="print-project">
+                        <div class="header">
+                            <div class="header-title">${sd.customer || 'Project'}</div>
+                            <div class="header-row">
+                                <span>${fullAddress || '—'}</span>
+                                <span><span class="label">Contact:</span> ${contactName || '—'}</span>
+                                <span><span class="label">Phone:</span> ${contactPhone || '—'}</span>
+                            </div>
+                            <div class="header-row">
+                                <span><span class="label">Utility:</span> ${sd.utility || '—'}</span>
+                                <span><span class="label">Site Visit:</span> ${visitDateDisplay || '—'}</span>
+                            </div>
+                        </div>
+                `;
                 
                 // Evaporators section
                 if (evaps.length > 0) {
-                    html += '<h2 style="color:#2d7bb8; border-bottom:2px solid #2d7bb8; padding-bottom:0.25rem; margin-top:1.5rem;">Evaporators</h2>';
+                    html += '<h2>Evaporators</h2>';
                     evaps.forEach((e, i) => {
                         const notes = e['room-notes'] || '';
                         html += `
-                            <div class="print-room" style="border:1px solid #bbb; border-radius:4px; padding:10px 14px; margin-bottom:12px;">
-                                <div class="room-title" style="font-weight:700; font-size:1.15rem; color:#1e5a99; margin-bottom:4px;">${buildCardTitle(e, 'Evaporator ' + (i + 1))}</div>
+                            <div class="print-room">
+                                <div class="room-title">${buildCardTitle(e, 'Evaporator ' + (i + 1))}</div>
                                 ${buildMfrHtml(e)}
                                 ${buildInfoLine(e, true)}
                                 ${buildSpecColumns(e, true)}
-                                <hr style="border:0; border-top:1px solid #ddd; margin:6px 0 4px 0;">
-                                <div style="font-size:0.9rem;"><span style="font-weight:600;">Notes:</span> <span style="font-weight:normal; white-space:pre-wrap; color:#555;">${notes || '—'}</span></div>
+                                <hr class="print-notes-separator">
+                                <div class="print-room-notes"><span class="notes-label">Notes:</span> <span class="notes-text">${notes || '—'}</span></div>
                             </div>`;
                     });
                 }
                 
                 // Condensers section
                 if (conds.length > 0) {
-                    html += '<h2 style="color:#2d7bb8; border-bottom:2px solid #2d7bb8; padding-bottom:0.25rem; margin-top:1.5rem;">Condensers</h2>';
+                    html += '<h2>Condensers</h2>';
                     conds.forEach((c, i) => {
                         const notes = c['room-notes'] || '';
                         html += `
-                            <div class="print-room" style="border:1px solid #bbb; border-radius:4px; padding:10px 14px; margin-bottom:12px;">
-                                <div class="room-title" style="font-weight:700; font-size:1.15rem; color:#1e5a99; margin-bottom:4px;">${buildCardTitle(c, 'Condenser ' + (i + 1))}</div>
+                            <div class="print-room">
+                                <div class="room-title">${buildCardTitle(c, 'Condenser ' + (i + 1))}</div>
                                 ${buildMfrHtml(c)}
                                 ${buildInfoLine(c, false)}
                                 ${buildSpecColumns(c, false)}
-                                <hr style="border:0; border-top:1px solid #ddd; margin:6px 0 4px 0;">
-                                <div style="font-size:0.9rem;"><span style="font-weight:600;">Notes:</span> <span style="font-weight:normal; white-space:pre-wrap; color:#555;">${notes || '—'}</span></div>
+                                <hr class="print-notes-separator">
+                                <div class="print-room-notes"><span class="notes-label">Notes:</span> <span class="notes-text">${notes || '—'}</span></div>
                             </div>`;
                     });
                 }
-                
+
+                html += '</div>';
                 container.innerHTML = html;
+
+                const printContainer = document.getElementById('printViewContainer');
+                if (printContainer && !printContainer.dataset.tapToggleBound) {
+                    printContainer.dataset.tapToggleBound = 'true';
+                    printContainer.addEventListener('click', (e) => {
+                        const header = document.getElementById('printViewHeader');
+                        if (header && header.contains(e.target)) return;
+                        if (container.contains(e.target)) {
+                            printContainer.classList.toggle('print-view-controls-hidden');
+                        }
+                    });
+                }
             },
             
             // Download PDF from backend
             async downloadPrintPdf() {
-                const projectId = ProjectState.currentProjectId;
+                const projectId = ProjectState.currentProjectId || ProjectState.project_id;
                 if (!projectId) {
                     showToast('No project loaded. Please open a project first.', 'warning');
                     return;
@@ -7617,7 +7827,15 @@
                 try {
                     const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/print.pdf`);
                     if (!response.ok) {
-                        throw new Error('Failed to generate PDF');
+                        let errorMsg = 'Failed to generate PDF';
+                        try {
+                            const errData = await response.json();
+                            errorMsg = errData.error || errData.message || errorMsg;
+                        } catch (e) {
+                            const text = await response.text().catch(() => '');
+                            if (text) errorMsg = text;
+                        }
+                        throw new Error(errorMsg);
                     }
                     
                     const blob = await response.blob();
@@ -10539,16 +10757,10 @@
             const container = document.getElementById('embeddedBillsContent');
             if (!container) return;
             
-            // Get current project ID first - if no project, show save prompt immediately
-            const projectId = ProjectState.currentProjectId;
+            // Get current project ID (may be empty for brand new projects)
+            const projectId = ProjectState.currentProjectId || ProjectState.project_id;
             if (!projectId) {
-                console.log('[bills] No project ID - showing save prompt');
-                container.innerHTML = `
-                    <div class="embedded-bills-upload">
-                        <p style="color: #666; margin-bottom: 1rem;">Save the project first to upload electric bills.</p>
-                    </div>
-                `;
-                return;
+                console.log('[bills] No project ID yet - showing upload UI (auto-create on upload).');
             }
             
             // Ensure config is loaded before checking billsFeatureEnabled
@@ -10627,6 +10839,10 @@
             };
             
             renderEmptyUpload();
+            
+            if (!projectId) {
+                return;
+            }
             
             // Setup timeout for fetch (10 second limit)
             const BILLS_TIMEOUT_MS = 10000;
@@ -10968,6 +11184,67 @@
                         </button>
                     </div>
                 `;
+            }
+        }
+        
+        // Ensure a project exists before bills upload/import
+        async function ensureProjectIdForBillsAction() {
+            let projectId = ProjectState.currentProjectId || ProjectState.project_id;
+            if (projectId) return projectId;
+            
+            try {
+                const nameCandidate = (siteData.customer || ProjectState.currentProjectName || 'Untitled Site Walk').trim();
+                const projectName = nameCandidate || 'Untitled Site Walk';
+                const createResult = await createProjectOnServer(projectName);
+                projectId = createResult.project_id;
+                
+                ProjectState.currentProjectId = projectId;
+                ProjectState.project_id = projectId;
+                ProjectState.currentProjectName = projectName;
+                ProjectState.siteData.project_id = projectId;
+                siteData.project_id = projectId;
+                
+                // Persist project data to server (even if empty)
+                const evapCount = entries
+                    .filter(e => e.section === 'evap')
+                    .reduce((sum, e) => sum + getEntryCount(e), 0);
+                const condCount = entries
+                    .filter(e => e.section === 'cond')
+                    .reduce((sum, e) => sum + getEntryCount(e), 0);
+                
+                await updateProjectOnServer(projectId, {
+                    siteData: siteData,
+                    entries: entries,
+                    photos: ProjectState.photos || photos || [],
+                    evap_count: evapCount,
+                    cond_count: condCount
+                });
+                
+                if (typeof updateUrlWithProjectId === 'function') {
+                    updateUrlWithProjectId(projectId);
+                }
+                updateCurrentProjectDisplay();
+                
+                try {
+                    const snapshot = {
+                        project_id: ProjectState.project_id,
+                        currentProjectId: ProjectState.currentProjectId,
+                        currentProjectName: ProjectState.currentProjectName,
+                        siteData: ProjectState.siteData,
+                        entries: ProjectState.entries,
+                        photos: ProjectState.photos || [],
+                        lastSavedAt: new Date().toISOString()
+                    };
+                    localStorage.setItem('currentProject', JSON.stringify(snapshot));
+                } catch (e) {
+                    console.warn('[bills] Failed to save local snapshot:', e);
+                }
+                
+                return projectId;
+            } catch (err) {
+                console.error('[bills] Failed to auto-create project:', err);
+                showToast('Could not create project for bill upload.', 'error');
+                return null;
             }
         }
         
@@ -11953,11 +12230,8 @@
             if (!files || files.length === 0) return;
             
             // Use currentProjectId first, fall back to project_id
-            const projectId = ProjectState.currentProjectId || ProjectState.project_id;
-            if (!projectId) {
-                showToast('Please save the project first before uploading bills.', 'warning');
-                return;
-            }
+            const projectId = await ensureProjectIdForBillsAction();
+            if (!projectId) return;
             
             console.log(`[embeddedBills] Starting upload of ${files.length} files for project ${projectId}`);
             
@@ -12154,11 +12428,8 @@
         async function handleEmbeddedBillCsvImport(file, projectId) {
             if (!file) return;
             
-            projectId = projectId || ProjectState.currentProjectId || ProjectState.project_id;
-            if (!projectId) {
-                showToast('Please save the project first before importing bills.', 'warning');
-                return;
-            }
+            projectId = projectId || await ensureProjectIdForBillsAction();
+            if (!projectId) return;
             
             console.log(`[embeddedBills] Importing bills from CSV: ${file.name}`);
             
@@ -14570,8 +14841,15 @@
                     body: JSON.stringify(data)
                 });
                 if (!response.ok) {
-                    const errData = await response.json();
-                    throw new Error(errData.error || 'Failed to update project');
+                    let message = 'Failed to update project';
+                    try {
+                        const errData = await response.json();
+                        message = errData.error || errData.message || message;
+                    } catch (e) {
+                        const text = await response.text().catch(() => '');
+                        if (text) message = text;
+                    }
+                    throw new Error(message);
                 }
                 return await response.json();
             } catch (err) {
@@ -14766,8 +15044,8 @@
             }
             
             try {
-                let projectId = ProjectState.currentProjectId;
-                const originalProjectId = ProjectState.currentProjectId; // Remember for bill copying
+                let projectId = ProjectState.currentProjectId || ProjectState.project_id;
+                const originalProjectId = ProjectState.currentProjectId || ProjectState.project_id; // Remember for bill copying
                 
                 // FIRST SAVE / SAVE AS LOGIC:
                 // - First save (no projectId): Prompts for name, defaults to customer name
@@ -14791,6 +15069,9 @@
                     const createResult = await createProjectOnServer(name);
                     projectId = createResult.project_id;
                     ProjectState.currentProjectId = projectId;
+                    ProjectState.project_id = projectId;
+                    if (ProjectState.siteData) ProjectState.siteData.project_id = projectId;
+                    if (siteData) siteData.project_id = projectId;
                     ProjectState.currentProjectName = name; // projectName set here
                     
                     // SAVE AS: Copy electric bills from original project to new project

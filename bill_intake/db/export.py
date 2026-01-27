@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+from collections import Counter
 
 from bill_intake.db.connection import get_connection
 from bill_intake.db.accounts import upsert_utility_account
@@ -125,6 +126,59 @@ def export_bills_csv(project_id):
             if not bills:
                 return None
 
+            def normalize_address(addr: str) -> str:
+                return " ".join(addr.strip().split())
+
+            try:
+                from bill_extractor import validate_service_address
+            except Exception:
+                validate_service_address = None
+
+            canonical_addresses = {}
+            if bills:
+                address_stats = {}
+                for b in bills:
+                    key = (b["account_number"] or "", b["meter_number"] or "")
+                    addr = (b["service_address"] or "").strip()
+                    if not addr:
+                        continue
+
+                    normalized = normalize_address(addr)
+                    if not normalized:
+                        continue
+
+                    bucket = address_stats.setdefault(
+                        key,
+                        {
+                            "valid_counts": Counter(),
+                            "valid_samples": {},
+                            "all_counts": Counter(),
+                            "all_samples": {},
+                        },
+                    )
+
+                    norm_key = normalized.upper()
+                    bucket["all_counts"][norm_key] += 1
+                    bucket["all_samples"].setdefault(norm_key, addr)
+
+                    if validate_service_address is None or validate_service_address(addr):
+                        bucket["valid_counts"][norm_key] += 1
+                        bucket["valid_samples"].setdefault(norm_key, addr)
+
+                for key, stats in address_stats.items():
+                    if stats["valid_counts"]:
+                        norm_key, _ = max(
+                            stats["valid_counts"].items(),
+                            key=lambda item: (item[1], len(item[0])),
+                        )
+                        canonical_addresses[key] = stats["valid_samples"][norm_key]
+                    elif stats["all_counts"]:
+                        norm_key, _ = max(
+                            stats["all_counts"].items(),
+                            key=lambda item: (item[1], len(item[0])),
+                        )
+                        canonical_addresses[key] = stats["all_samples"][norm_key]
+
             output = io.StringIO()
             headers = [
                 "Utility",
@@ -163,11 +217,14 @@ def export_bills_csv(project_id):
             writer.writerow(headers)
 
             for b in bills:
+                key = (b["account_number"] or "", b["meter_number"] or "")
+                canonical_address = canonical_addresses.get(key, "")
+                service_address = canonical_address or b["service_address"] or ""
                 row = [
                     b["utility_name"] or "",
                     b["account_number"] or "",
                     b["meter_number"] or "",
-                    b["service_address"] or "",
+                    service_address,
                     b["rate_schedule"] or "",
                     str(b["period_start"]) if b["period_start"] else "",
                     str(b["period_end"]) if b["period_end"] else "",
