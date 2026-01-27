@@ -1693,18 +1693,6 @@
             cursor: pointer;
         }
         
-        /* Customer Info page */
-        .customer-info-page {
-            max-width: 600px;
-            margin: 0 auto;
-        }
-        .customer-info-page h2 {
-            margin-bottom: 1rem;
-        }
-        .customer-info-save-btn {
-            margin-top: 1rem;
-        }
-        
         /* ==================== NAVIGATION VIEW SYSTEM ==================== */
         /* Main app container - shows one view at a time */
         #app-main {
@@ -1723,9 +1711,7 @@
         body.view-home header,
         body.view-home #topInfoBar,
         body.view-projects header,
-        body.view-projects #topInfoBar,
-        body.view-customerInfo header,
-        body.view-customerInfo #topInfoBar {
+        body.view-projects #topInfoBar {
             display: none !important;
         }
         
@@ -4272,7 +4258,6 @@
             <li><a href="/home" data-nav="home"><span class="nav-icon">🏠</span> Home</a></li>
             <li><a href="/projects" data-nav="projects"><span class="nav-icon">📁</span> Projects</a></li>
             <li><a href="/deleted-projects" data-nav="deletedProjects"><span class="nav-icon">🗑️</span> Recently Deleted</a></li>
-            <li><a href="/customer-info" data-nav="customerInfo"><span class="nav-icon">👤</span> Customer Info</a></li>
             <li><a href="/current-project" data-nav="currentProject"><span class="nav-icon">📋</span> Current Project</a></li>
             <!-- Utility Bills menu item removed - now embedded in Current Project view -->
             <!-- <li id="billsNavItem" style="display:none;"><a href="#utility-bills" data-nav="utilityBills"><span class="nav-icon">📄</span> Utility Bills</a></li> -->
@@ -4362,17 +4347,6 @@
             <button id="deletedProjectsBulkRestoreBtn" class="button" style="background-color: #28a745;">↩️ Restore</button>
             <button id="deletedProjectsBulkDeleteBtn" class="button" style="background-color: #dc3545;">🗑️ Delete Forever</button>
             <button id="deletedProjectsCancelSelectBtn" class="button secondary">Cancel</button>
-        </div>
-    </div>
-    
-    <!-- ==================== CUSTOMER INFO VIEW ==================== -->
-    <div id="customerInfoView" class="app-view">
-        <div class="customer-info-page" style="padding: 1rem;">
-            <h2>👤 Customer Information</h2>
-            <p style="color: #666; margin-bottom: 1rem;">Edit customer and site details for the current project.</p>
-            <div id="customerInfoFormWrapper">
-                <!-- Customer info form will be rendered here dynamically -->
-            </div>
         </div>
     </div>
     
@@ -6213,7 +6187,7 @@
         // NAVIGATION CONTROLLER - Manages currentView and view rendering
         // ==================================================================================
         const NavigationController = {
-            currentView: 'home', // 'home', 'projects', 'customerInfo', 'currentProject'
+            currentView: 'home', // 'home', 'projects', 'currentProject'
             
             // Projects view state
             projectsSearchQuery: '',
@@ -6271,7 +6245,7 @@
                     }
                     
                     // Project-specific views that require a loaded project
-                    const projectRequiredPaths = ['current-project', 'utility-bills', 'customer-info', 'print'];
+                    const projectRequiredPaths = ['current-project', 'utility-bills', 'print'];
                     const isProjectPath = projectRequiredPaths.includes(path);
                     
                     console.log('[nav] DEBUG: path=' + path + ', isProjectPath=' + isProjectPath);
@@ -6370,14 +6344,17 @@
             },
             
             handlePathChange() {
-                const path = window.location.pathname.replace(/^\//, '') || 'home';
+                let path = window.location.pathname.replace(/^\//, '') || 'home';
+                if (path === 'customer-info') {
+                    window.history.replaceState(null, '', '/current-project');
+                    path = 'current-project';
+                }
                 
                 // Map path to view
                 const pathToView = {
                     'home': 'home',
                     'projects': 'projects',
                     'deleted-projects': 'deletedProjects',
-                    'customer-info': 'customerInfo',
                     'current-project': 'currentProject',
                     'utility-bills': 'utilityBills',
                     'print': 'printView'
@@ -6422,7 +6399,6 @@
                         'home': '/home',
                         'projects': '/projects',
                         'deletedProjects': '/deleted-projects',
-                        'customerInfo': '/customer-info',
                         'currentProject': '/current-project',
                         'utilityBills': '/utility-bills',
                         'printView': '/print'
@@ -6430,7 +6406,7 @@
                     const newPath = viewToPath[viewName] || '/home';
                     
                     // Only preserve ?projectId for project-specific views
-                    const projectViews = ['currentProject', 'utilityBills', 'customerInfo', 'printView'];
+                    const projectViews = ['currentProject', 'utilityBills', 'printView'];
                     const shouldPreserveProjectId = projectViews.includes(viewName);
                     
                     let newUrl = newPath;
@@ -6450,7 +6426,7 @@
                 document.querySelectorAll('.app-view').forEach(v => v.classList.remove('active'));
                 
                 // Update body class for CSS targeting
-                document.body.classList.remove('view-home', 'view-projects', 'view-deletedProjects', 'view-customerInfo', 'view-currentProject', 'view-utilityBills', 'view-printView');
+                document.body.classList.remove('view-home', 'view-projects', 'view-deletedProjects', 'view-currentProject', 'view-utilityBills', 'view-printView');
                 document.body.classList.add(`view-${viewName}`);
                 
                 // Update active nav link
@@ -6476,10 +6452,6 @@
                     case 'deletedProjects':
                         document.getElementById('deletedProjectsView').classList.add('active');
                         this.renderDeletedProjectsView();
-                        break;
-                    case 'customerInfo':
-                        document.getElementById('customerInfoView').classList.add('active');
-                        this.renderCustomerInfoView();
                         break;
                     case 'currentProject':
                         document.getElementById('currentProjectView').classList.add('active');
@@ -6581,13 +6553,13 @@
                 const homeImportBtn = document.getElementById('homeImportCsvBtn');
                 const homeImportFile = document.getElementById('homeImportCsvFile');
                 
-                if (startNewBtn) {
-                    startNewBtn.addEventListener('click', () => {
-                        // Clear state and go to customer info
-                        newProject();
-                        this.setView('customerInfo');
-                    });
-                }
+                    if (startNewBtn) {
+                        startNewBtn.addEventListener('click', () => {
+                            // Clear state and go directly to the current project view
+                            newProject();
+                            this.setView('currentProject');
+                        });
+                    }
                 
                 if (pastSitewalksBtn) {
                     pastSitewalksBtn.addEventListener('click', () => {
@@ -6833,7 +6805,7 @@
                         const cond = proj.cond_count || 0;
                         let metaParts = [];
                         if (proj.customer && proj.customer !== proj.name) metaParts.push(proj.customer);
-                        if (evap > 0 || cond > 0) metaParts.push(`${evap}E/${cond}C`);
+                        if (evap > 0 || cond > 0) metaParts.push(`${evap} Evaps/${cond} Condensers`);
                         
                         item.innerHTML = `
                             <div class="home-recent-info">
@@ -7417,294 +7389,10 @@
             },
             
             // ==================================================================================
-            // RENDER CUSTOMER INFO VIEW
+            // CUSTOMER INFO VIEW REMOVED
             // ==================================================================================
             renderCustomerInfoView() {
-                const wrapper = document.getElementById('customerInfoFormWrapper');
-                if (!wrapper) return;
-                
-                // Use ProjectState.siteData to prefill
-                const sd = ProjectState.siteData || siteData || {};
-                
-                // Auto-fill date with today if blank
-                const dateValue = sd.date || getTodayISO();
-                const dateDisplay = formatDateForDisplay(dateValue);
-                
-                wrapper.innerHTML = `
-                    <div class="field"><label for="ci-date">Date of Site Visit</label><input type="text" id="ci-date" placeholder="M/D/YY" value="${dateDisplay}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
-                    <div class="field">
-                        <label for="ci-customer">Customer Name</label>
-                        <div class="autocomplete-wrapper">
-                            <input type="text" id="ci-customer" placeholder="Customer Name" value="${sd.customer || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
-                            <div id="ci-customer-autocomplete" class="autocomplete-dropdown"></div>
-                        </div>
-                    </div>
-                    <div class="field" style="margin-top: -0.5rem;"><button type="button" id="ci-show-businesses" class="button" style="font-size: 0.9rem; padding: 0.5rem 1rem;">📍 Show Businesses Nearby</button></div>
-                    <div class="field">
-                        <label for="ci-street">Street Address</label>
-                        <div class="autocomplete-wrapper">
-                            <input type="text" id="ci-street" placeholder="Street Address" value="${sd.street || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
-                            <div id="ci-street-autocomplete" class="autocomplete-dropdown"></div>
-                        </div>
-                    </div>
-                    <div class="field">
-                        <label for="ci-city">City</label>
-                        <div class="autocomplete-wrapper">
-                            <input type="text" id="ci-city" placeholder="City" value="${sd.city || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
-                            <div id="ci-city-autocomplete" class="autocomplete-dropdown"></div>
-                        </div>
-                    </div>
-                    <div class="field"><label for="ci-state">State</label><input type="text" id="ci-state" placeholder="State" maxlength="2" value="${sd.state || 'CA'}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
-                    <div class="field"><label for="ci-zip">ZIP</label><input type="text" id="ci-zip" placeholder="ZIP" maxlength="10" value="${sd.zip || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
-                    <div class="field"><label for="ci-contact">Contact Name</label><input type="text" id="ci-contact" placeholder="Contact Name" value="${sd.contact || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
-                    <div class="field"><label for="ci-phone">Phone</label><input type="tel" id="ci-phone" placeholder="Phone" value="${sd.phone || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
-                    <div class="field">
-                        <label for="ci-utility">Utility Company</label>
-                        <select id="ci-utility">
-                            <option value="">—</option>
-                            <option value="LADWP">LADWP</option>
-                            <option value="Vernon">Vernon</option>
-                            <option value="SCE">SCE</option>
-                            <option value="Pasadena">Pasadena</option>
-                            <option value="Anaheim">Anaheim</option>
-                            <option value="Riverside">Riverside</option>
-                            <option value="Colton">Colton</option>
-                            <option value="Burbank">Burbank</option>
-                            <option value="Glendale">Glendale</option>
-                            <option value="Azusa">Azusa</option>
-                            <option value="PG&E">PG&E</option>
-                            <option value="SDG&E">SDG&E</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
-                    <div class="field hidden" id="ci-utility-other-container">
-                        <label for="ci-utility-other">Custom Utility</label>
-                        <input type="text" id="ci-utility-other" class="capitalize" placeholder="Enter utility company name" value="" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
-                    </div>
-                    <div style="display: flex; justify-content: center; gap: 0.75rem; margin-top: 1.5rem;">
-                        <button id="saveCustomerInfoBtn" class="button">💾 Save & Continue</button>
-                        <button id="cancelCustomerInfoBtn" class="button secondary">Cancel</button>
-                    </div>
-                `;
-                
-                // Wire up Show Businesses Nearby button
-                document.getElementById('ci-show-businesses').addEventListener('click', () => {
-                    // Check if Google Places API is configured
-                    if (!NavigationController.googlePlacesEnabled) {
-                        showToast('Google Places not configured. Set GOOGLE_PLACES_API_KEY in .env and restart the server.', 'warning');
-                        return;
-                    }
-                    
-                    // Trigger the use location button if it exists
-                    const useLocationBtn = document.getElementById('useLocationBtn');
-                    if (useLocationBtn) {
-                        useLocationBtn.click();
-                    } else if (typeof showNearbyBusinesses === 'function') {
-                        showNearbyBusinesses();
-                    } else {
-                        // Request geolocation and call API directly
-                        if (!navigator.geolocation) {
-                            showToast('Geolocation is not supported by your browser.', 'warning');
-                            return;
-                        }
-                        navigator.geolocation.getCurrentPosition(
-                            (position) => {
-                                const lat = position.coords.latitude;
-                                const lng = position.coords.longitude;
-                                window.location.href = `#nearby?lat=${lat}&lng=${lng}`;
-                            },
-                            (error) => {
-                                if (error.code === error.PERMISSION_DENIED) {
-                                    showToast('Location permission denied. Please allow location access.', 'warning');
-                                } else if (error.code === error.TIMEOUT) {
-                                    showToast('Location request timed out. Please try again.', 'warning');
-                                } else {
-                                    showToast('Could not get your location. Please try again.', 'warning');
-                                }
-                            },
-                            { timeout: 10000, enableHighAccuracy: true }
-                        );
-                    }
-                });
-                
-                // Ensure button reflects current config state
-                updateGooglePlacesUI();
-                
-                // Initialize autocomplete for Customer Information modal fields
-                if (typeof setupAutocomplete === 'function') {
-                    setupAutocomplete('ci-customer', 'ci-customer-autocomplete');
-                    setupAutocomplete('ci-street', 'ci-street-autocomplete');
-                    setupAutocomplete('ci-city', 'ci-city-autocomplete');
-                }
-                
-                // Phone number formatting for ci-phone
-                const ciPhoneInput = document.getElementById('ci-phone');
-                if (ciPhoneInput) {
-                    ciPhoneInput.addEventListener('input', (e) => {
-                        let digits = e.target.value.replace(/\D/g, '');
-                        let formatted = '';
-                        if (digits.length > 0) {
-                            formatted += '(' + digits.substring(0, Math.min(3, digits.length));
-                        }
-                        if (digits.length >= 4) {
-                            formatted += ') ' + digits.substring(3, Math.min(6, digits.length));
-                        }
-                        if (digits.length >= 7) {
-                            formatted += '-' + digits.substring(6, 10);
-                        }
-                        e.target.value = formatted;
-                    });
-                }
-                
-                // Utility dropdown logic for ci-utility
-                const ciUtilitySelect = document.getElementById('ci-utility');
-                const ciUtilityOtherContainer = document.getElementById('ci-utility-other-container');
-                const ciUtilityOtherInput = document.getElementById('ci-utility-other');
-                
-                if (ciUtilitySelect) {
-                    // Pre-select the current utility value
-                    const currentUtility = sd.utility || '';
-                    if (currentUtility.startsWith('Other -- ')) {
-                        ciUtilitySelect.value = 'Other';
-                        if (ciUtilityOtherInput) ciUtilityOtherInput.value = currentUtility.replace('Other -- ', '');
-                        if (ciUtilityOtherContainer) ciUtilityOtherContainer.classList.remove('hidden');
-                    } else if (currentUtility && Array.from(ciUtilitySelect.options).some(opt => opt.value === currentUtility)) {
-                        ciUtilitySelect.value = currentUtility;
-                    } else if (currentUtility) {
-                        // Custom utility not in list - select "Other"
-                        ciUtilitySelect.value = 'Other';
-                        if (ciUtilityOtherInput) ciUtilityOtherInput.value = currentUtility;
-                        if (ciUtilityOtherContainer) ciUtilityOtherContainer.classList.remove('hidden');
-                    }
-                    
-                    // Show/hide "Other" input on change
-                    ciUtilitySelect.addEventListener('change', () => {
-                        if (ciUtilitySelect.value === 'Other') {
-                            if (ciUtilityOtherContainer) ciUtilityOtherContainer.classList.remove('hidden');
-                        } else {
-                            if (ciUtilityOtherContainer) ciUtilityOtherContainer.classList.add('hidden');
-                            if (ciUtilityOtherInput) ciUtilityOtherInput.value = '';
-                        }
-                    });
-                }
-                
-                // Helper to compute ci-utility value from dropdown + Other input
-                function computeCiUtilityValue() {
-                    const sel = document.getElementById('ci-utility');
-                    const otherInput = document.getElementById('ci-utility-other');
-                    if (!sel) return '';
-                    if (sel.value === 'Other' && otherInput && otherInput.value.trim()) {
-                        return 'Other -- ' + otherInput.value.trim();
-                    }
-                    return sel.value;
-                }
-                
-                // Save button handler - async to support auto-create project
-                document.getElementById('saveCustomerInfoBtn').addEventListener('click', async () => {
-                    // Parse date from display format to ISO
-                    const dateDisplayValue = document.getElementById('ci-date').value.trim();
-                    const dateISO = parseDateFromDisplay(dateDisplayValue) || getTodayISO();
-                    
-                    // Update siteData from form
-                    siteData.date = dateISO;
-                    siteData.visitDate = dateDisplayValue || formatDateForDisplay(dateISO);
-                    siteData.customer = document.getElementById('ci-customer').value.trim();
-                    siteData.street = document.getElementById('ci-street').value.trim();
-                    siteData.city = document.getElementById('ci-city').value.trim();
-                    siteData.state = document.getElementById('ci-state').value.trim();
-                    siteData.zip = document.getElementById('ci-zip').value.trim();
-                    siteData.contact = document.getElementById('ci-contact').value.trim();
-                    siteData.phone = document.getElementById('ci-phone').value.trim();
-                    siteData.utility = computeCiUtilityValue();
-                    
-                    // Sync to ProjectState
-                    Object.assign(ProjectState.siteData, siteData);
-                    
-                    // Sync to main form if it exists
-                    const siteCustomer = document.getElementById('site-customer');
-                    if (siteCustomer) {
-                        document.getElementById('site-customer').value = siteData.customer;
-                        document.getElementById('site-street').value = siteData.street;
-                        document.getElementById('site-city').value = siteData.city;
-                        document.getElementById('site-state').value = siteData.state;
-                        document.getElementById('site-zip').value = siteData.zip;
-                        document.getElementById('site-contact').value = siteData.contact;
-                        document.getElementById('site-phone').value = siteData.phone;
-                        // Sync utility to main form dropdown
-                        if (typeof applyUtilityToForm === 'function') {
-                            applyUtilityToForm(siteData.utility);
-                        }
-                    }
-                    const siteDateInput = document.getElementById('site-date');
-                    if (siteDateInput) siteDateInput.value = dateISO;
-                    
-                    // Update displays
-                    const customerNameEl = document.getElementById('customerName');
-                    if (customerNameEl) customerNameEl.textContent = siteData.customer;
-                    
-                    const visitDateText = document.getElementById('visitDateText');
-                    if (visitDateText) visitDateText.textContent = siteData.visitDate;
-                    
-                    const addressParts = [];
-                    if (siteData.street) addressParts.push(siteData.street);
-                    const cityStateZip = [siteData.city, siteData.state, siteData.zip].filter(v => v).join(', ');
-                    if (cityStateZip) addressParts.push(cityStateZip);
-                    const siteAddressText = document.getElementById('siteAddressText');
-                    if (siteAddressText) siteAddressText.textContent = addressParts.join(', ') || 'No address provided';
-                    
-                    ProjectState.markDirty();
-                    
-                    // AUTO-CREATE PROJECT if no currentProjectId exists
-                    if (!ProjectState.currentProjectId) {
-                        try {
-                            const projectName = siteData.customer || 'Untitled Site Walk';
-                            
-                            // Build project object with current state
-                            const projectData = {
-                                name: projectName,
-                                siteData: { ...siteData },
-                                entries: [...entries],
-                                photos: [...(ProjectState.photos || [])]
-                            };
-                            
-                            // Create project on server
-                            const response = await fetch('/api/projects/create', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ name: projectName })
-                            });
-                            
-                            if (response.ok) {
-                                const result = await response.json();
-                                const newId = result.project_id;
-                                
-                                // Update ProjectState with new project ID
-                                ProjectState.project_id = newId;
-                                ProjectState.currentProjectId = newId;
-                                ProjectState.currentProjectName = projectName;
-                                ProjectState.isDirty = false;
-                                
-                                // Save full project data
-                                await ProjectService.updateProject(newId, projectData);
-                                
-                                updateCurrentProjectDisplay();
-                                console.log('[CustomerInfo] Auto-created project:', newId);
-                            }
-                        } catch (err) {
-                            console.error('[CustomerInfo] Failed to auto-create project:', err);
-                        }
-                    } else {
-                        SaveController.queueSave('customer-info-save');
-                    }
-                    
-                    // Navigate to current project view
-                    this.setView('currentProject');
-                });
-                
-                // Cancel button handler
-                document.getElementById('cancelCustomerInfoBtn').addEventListener('click', () => {
-                    this.setView('home');
-                });
+                this.setView('currentProject');
             },
             
             // ==================================================================================
@@ -16665,9 +16353,6 @@
                 submitBtn.textContent = 'Save Condenser';
                 topSaveBtn.textContent = 'Save Condenser';
             }
-            // Hide customer info section when editing a room
-            const customerInfoView = document.getElementById('customerInfoView');
-            if (customerInfoView) customerInfoView.classList.add('hidden');
             // Hide the legacy "Save Customer Info" button while editing a room
             setSaveCustomerInfoVisible(false);
             
@@ -16900,10 +16585,6 @@
             document.getElementById('adapter-type-field').classList.add('hidden');
             document.getElementById('adapter-qty-field').classList.add('hidden');
             document.getElementById('temp-fields').classList.add('hidden');
-            
-            // Show customer info section when closing form
-            const customerInfoView = document.getElementById('customerInfoView');
-            if (customerInfoView) customerInfoView.classList.remove('hidden');
             
             // Exit edit mode and clean up state
             exitEditMode();
@@ -17905,7 +17586,7 @@
         if (newProjectBtnBottom) {
             newProjectBtnBottom.addEventListener('click', () => {
                 newProject();
-                NavigationController.setView('customerInfo');
+                NavigationController.setView('currentProject');
             });
         }
         
@@ -18940,7 +18621,6 @@
                     // Respect the current path instead of always going to currentProject
                     const currentPath = window.location.pathname.replace(/^\//, '') || '';
                     const projectViews = {
-                        'customer-info': 'customerInfo',
                         'current-project': 'currentProject',
                         'utility-bills': 'utilityBills',
                         'print': 'printView'
