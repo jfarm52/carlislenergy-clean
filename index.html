@@ -7458,7 +7458,29 @@
                     <div class="field"><label for="ci-zip">ZIP</label><input type="text" id="ci-zip" placeholder="ZIP" maxlength="10" value="${sd.zip || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
                     <div class="field"><label for="ci-contact">Contact Name</label><input type="text" id="ci-contact" placeholder="Contact Name" value="${sd.contact || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
                     <div class="field"><label for="ci-phone">Phone</label><input type="tel" id="ci-phone" placeholder="Phone" value="${sd.phone || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
-                    <div class="field"><label for="ci-utility">Utility Company</label><input type="text" id="ci-utility" placeholder="Utility Company" value="${sd.utility || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
+                    <div class="field">
+                        <label for="ci-utility">Utility Company</label>
+                        <select id="ci-utility">
+                            <option value="">—</option>
+                            <option value="LADWP">LADWP</option>
+                            <option value="Vernon">Vernon</option>
+                            <option value="SCE">SCE</option>
+                            <option value="Pasadena">Pasadena</option>
+                            <option value="Anaheim">Anaheim</option>
+                            <option value="Riverside">Riverside</option>
+                            <option value="Colton">Colton</option>
+                            <option value="Burbank">Burbank</option>
+                            <option value="Glendale">Glendale</option>
+                            <option value="Azusa">Azusa</option>
+                            <option value="PG&E">PG&E</option>
+                            <option value="SDG&E">SDG&E</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="field hidden" id="ci-utility-other-container">
+                        <label for="ci-utility-other">Custom Utility</label>
+                        <input type="text" id="ci-utility-other" class="capitalize" placeholder="Enter utility company name" value="" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
+                    </div>
                     <div style="display: flex; justify-content: center; gap: 0.75rem; margin-top: 1.5rem;">
                         <button id="saveCustomerInfoBtn" class="button">💾 Save & Continue</button>
                         <button id="cancelCustomerInfoBtn" class="button secondary">Cancel</button>
@@ -7515,6 +7537,68 @@
                     setupAutocomplete('ci-city', 'ci-city-autocomplete');
                 }
                 
+                // Phone number formatting for ci-phone
+                const ciPhoneInput = document.getElementById('ci-phone');
+                if (ciPhoneInput) {
+                    ciPhoneInput.addEventListener('input', (e) => {
+                        let digits = e.target.value.replace(/\D/g, '');
+                        let formatted = '';
+                        if (digits.length > 0) {
+                            formatted += '(' + digits.substring(0, Math.min(3, digits.length));
+                        }
+                        if (digits.length >= 4) {
+                            formatted += ') ' + digits.substring(3, Math.min(6, digits.length));
+                        }
+                        if (digits.length >= 7) {
+                            formatted += '-' + digits.substring(6, 10);
+                        }
+                        e.target.value = formatted;
+                    });
+                }
+                
+                // Utility dropdown logic for ci-utility
+                const ciUtilitySelect = document.getElementById('ci-utility');
+                const ciUtilityOtherContainer = document.getElementById('ci-utility-other-container');
+                const ciUtilityOtherInput = document.getElementById('ci-utility-other');
+                
+                if (ciUtilitySelect) {
+                    // Pre-select the current utility value
+                    const currentUtility = sd.utility || '';
+                    if (currentUtility.startsWith('Other -- ')) {
+                        ciUtilitySelect.value = 'Other';
+                        if (ciUtilityOtherInput) ciUtilityOtherInput.value = currentUtility.replace('Other -- ', '');
+                        if (ciUtilityOtherContainer) ciUtilityOtherContainer.classList.remove('hidden');
+                    } else if (currentUtility && Array.from(ciUtilitySelect.options).some(opt => opt.value === currentUtility)) {
+                        ciUtilitySelect.value = currentUtility;
+                    } else if (currentUtility) {
+                        // Custom utility not in list - select "Other"
+                        ciUtilitySelect.value = 'Other';
+                        if (ciUtilityOtherInput) ciUtilityOtherInput.value = currentUtility;
+                        if (ciUtilityOtherContainer) ciUtilityOtherContainer.classList.remove('hidden');
+                    }
+                    
+                    // Show/hide "Other" input on change
+                    ciUtilitySelect.addEventListener('change', () => {
+                        if (ciUtilitySelect.value === 'Other') {
+                            if (ciUtilityOtherContainer) ciUtilityOtherContainer.classList.remove('hidden');
+                        } else {
+                            if (ciUtilityOtherContainer) ciUtilityOtherContainer.classList.add('hidden');
+                            if (ciUtilityOtherInput) ciUtilityOtherInput.value = '';
+                        }
+                    });
+                }
+                
+                // Helper to compute ci-utility value from dropdown + Other input
+                function computeCiUtilityValue() {
+                    const sel = document.getElementById('ci-utility');
+                    const otherInput = document.getElementById('ci-utility-other');
+                    if (!sel) return '';
+                    if (sel.value === 'Other' && otherInput && otherInput.value.trim()) {
+                        return 'Other -- ' + otherInput.value.trim();
+                    }
+                    return sel.value;
+                }
+                
                 // Save button handler - async to support auto-create project
                 document.getElementById('saveCustomerInfoBtn').addEventListener('click', async () => {
                     // Parse date from display format to ISO
@@ -7531,7 +7615,7 @@
                     siteData.zip = document.getElementById('ci-zip').value.trim();
                     siteData.contact = document.getElementById('ci-contact').value.trim();
                     siteData.phone = document.getElementById('ci-phone').value.trim();
-                    siteData.utility = document.getElementById('ci-utility').value.trim();
+                    siteData.utility = computeCiUtilityValue();
                     
                     // Sync to ProjectState
                     Object.assign(ProjectState.siteData, siteData);
@@ -7546,6 +7630,10 @@
                         document.getElementById('site-zip').value = siteData.zip;
                         document.getElementById('site-contact').value = siteData.contact;
                         document.getElementById('site-phone').value = siteData.phone;
+                        // Sync utility to main form dropdown
+                        if (typeof applyUtilityToForm === 'function') {
+                            applyUtilityToForm(siteData.utility);
+                        }
                     }
                     const siteDateInput = document.getElementById('site-date');
                     if (siteDateInput) siteDateInput.value = dateISO;
