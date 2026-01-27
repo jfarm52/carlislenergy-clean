@@ -10578,8 +10578,55 @@
                 return;
             }
             
-            // Show loading state
-            container.innerHTML = '<div class="bills-loading" style="text-align: center; padding: 2rem; color: #666;">Loading bills data...</div>';
+            // Show upload UI immediately to avoid "loading" delay on new projects
+            const renderEmptyUpload = () => {
+                container.innerHTML = `
+                    <div class="embedded-bills-upload">
+                        <p style="color: #666; margin-bottom: 1rem;">📤 Upload PDF utility bills to extract account, meter, and usage data automatically.</p>
+                        <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
+                            <input type="file" id="embeddedBillFileInput" accept=".pdf,image/*" multiple style="display:none;">
+                            <button id="embeddedBillUploadBtn" class="button primary" style="font-size: 1rem; padding: 0.75rem 1.5rem;">
+                                📤 Upload Electric Bills
+                            </button>
+                            <input type="file" id="embeddedBillCsvInput" accept=".csv" style="display:none;">
+                            <button id="embeddedBillImportCsvBtn" class="button secondary" style="font-size: 1rem; padding: 0.75rem 1.5rem;">
+                                📥 Import from CSV
+                            </button>
+                        </div>
+                        <div id="embeddedBillUploadStatus" style="margin-top: 1rem;"></div>
+                        <div id="embeddedBillProgressContainer" class="bills-progress-container" style="display: none; margin-top: 1rem;">
+                            <div class="bills-progress-bar">
+                                <div id="embeddedBillProgressFill" class="bills-progress-fill"></div>
+                            </div>
+                            <div id="embeddedBillProgressText" class="bills-progress-text"></div>
+                        </div>
+                    </div>
+                `;
+                
+                const uploadBtn = document.getElementById('embeddedBillUploadBtn');
+                const fileInput = document.getElementById('embeddedBillFileInput');
+                if (uploadBtn && fileInput) {
+                    uploadBtn.onclick = () => fileInput.click();
+                    fileInput.onchange = (e) => { 
+                        const filesArray = Array.from(e.target.files);
+                        e.target.value = '';
+                        handleEmbeddedBillUpload(filesArray);
+                    };
+                }
+                
+                const csvImportBtn = document.getElementById('embeddedBillImportCsvBtn');
+                const csvInput = document.getElementById('embeddedBillCsvInput');
+                if (csvImportBtn && csvInput) {
+                    csvImportBtn.onclick = () => csvInput.click();
+                    csvInput.onchange = (e) => {
+                        const file = e.target.files[0];
+                        e.target.value = '';
+                        if (file) handleEmbeddedBillCsvImport(file, projectId);
+                    };
+                }
+            };
+            
+            renderEmptyUpload();
             
             // Setup timeout for fetch (10 second limit)
             const BILLS_TIMEOUT_MS = 10000;
@@ -10603,54 +10650,9 @@
                 const hasBillsFromCsv = files.length === 0 && accounts.length > 0;
                 
                 if (files.length === 0 && !hasBillsFromCsv) {
-                    // No bills uploaded and no CSV imports - show upload interface
-                    container.innerHTML = `
-                        <div class="embedded-bills-upload">
-                            <p style="color: #666; margin-bottom: 1rem;">📤 Upload PDF utility bills to extract account, meter, and usage data automatically.</p>
-                            <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
-                                <input type="file" id="embeddedBillFileInput" accept=".pdf,image/*" multiple style="display:none;">
-                                <button id="embeddedBillUploadBtn" class="button primary" style="font-size: 1rem; padding: 0.75rem 1.5rem;">
-                                    📤 Upload Electric Bills
-                                </button>
-                                <input type="file" id="embeddedBillCsvInput" accept=".csv" style="display:none;">
-                                <button id="embeddedBillImportCsvBtn" class="button secondary" style="font-size: 1rem; padding: 0.75rem 1.5rem;">
-                                    📥 Import from CSV
-                                </button>
-                            </div>
-                            <div id="embeddedBillUploadStatus" style="margin-top: 1rem;"></div>
-                            <div id="embeddedBillProgressContainer" class="bills-progress-container" style="display: none; margin-top: 1rem;">
-                                <div class="bills-progress-bar">
-                                    <div id="embeddedBillProgressFill" class="bills-progress-fill"></div>
-                                </div>
-                                <div id="embeddedBillProgressText" class="bills-progress-text"></div>
-                            </div>
-                        </div>
-                    `;
-                    
-                    // Wire up upload button
-                    const uploadBtn = document.getElementById('embeddedBillUploadBtn');
-                    const fileInput = document.getElementById('embeddedBillFileInput');
-                    if (uploadBtn && fileInput) {
-                        // Use direct property assignment to avoid stacking multiple listeners
-                        uploadBtn.onclick = () => fileInput.click();
-                        fileInput.onchange = (e) => { 
-                            const filesArray = Array.from(e.target.files);
-                            e.target.value = '';
-                            handleEmbeddedBillUpload(filesArray);
-                        };
-                    }
-                    
-                    // Wire up CSV import button
-                    const csvImportBtn = document.getElementById('embeddedBillImportCsvBtn');
-                    const csvInput = document.getElementById('embeddedBillCsvInput');
-                    if (csvImportBtn && csvInput) {
-                        csvImportBtn.onclick = () => csvInput.click();
-                        csvInput.onchange = (e) => {
-                            const file = e.target.files[0];
-                            e.target.value = '';
-                            if (file) handleEmbeddedBillCsvImport(file, projectId);
-                        };
-                    }
+                    // No bills uploaded and no CSV imports - keep upload interface
+                    renderEmptyUpload();
+                    return;
                 } else if (hasBillsFromCsv) {
                     // Bills imported from CSV (no files, but have accounts) - show extracted data only
                     let html = '<div class="embedded-bills-csv-import">';
@@ -15250,13 +15252,14 @@
         // - This prevents accidental saves of blank forms
         // 
         // CROSS-DEVICE: Syncs to server immediately after localStorage save
-        async function addProjectToSaved() {
+        async function addProjectToSaved(options = {}) {
             try {
                 // VALIDATION: Don't save empty projects (requires BOTH customer AND at least one unit)
+                const allowEmptyUnits = options.allowEmptyUnits === true;
                 const hasCustomer = siteData.customer && siteData.customer.trim() !== '';
                 const hasUnits = entries.length > 0;
                 
-                if (!(hasCustomer && hasUnits)) {
+                if (!(hasCustomer && (hasUnits || allowEmptyUnits))) {
                     console.log('ℹ Not saving - must have customer AND at least one evap/cond entry');
                     return;
                 }
@@ -15742,11 +15745,8 @@
                 // Update siteData
                 autoSaveSiteDetails();
                 
-                // Save ONLY customer info (no units) by temporarily clearing entries
-                const savedEntries = entries; // Backup current entries
-                entries = []; // Clear entries so only customer info is saved
-                addProjectToSaved();
-                entries = savedEntries; // Restore entries
+                // Save customer info even if no units yet
+                addProjectToSaved({ allowEmptyUnits: true });
                 
                 showToast(`Customer info saved for "${customer}". You can load it later from the dropdown above.`, 'success');
             });
