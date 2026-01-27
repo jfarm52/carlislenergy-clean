@@ -7432,10 +7432,28 @@
                 
                 wrapper.innerHTML = `
                     <div class="field"><label for="ci-date">Date of Site Visit</label><input type="text" id="ci-date" placeholder="M/D/YY" value="${dateDisplay}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
-                    <div class="field"><label for="ci-customer">Customer Name</label><input type="text" id="ci-customer" placeholder="Customer Name" value="${sd.customer || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
+                    <div class="field">
+                        <label for="ci-customer">Customer Name</label>
+                        <div class="autocomplete-wrapper">
+                            <input type="text" id="ci-customer" placeholder="Customer Name" value="${sd.customer || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
+                            <div id="ci-customer-autocomplete" class="autocomplete-dropdown"></div>
+                        </div>
+                    </div>
                     <div class="field" style="margin-top: -0.5rem;"><button type="button" id="ci-show-businesses" class="button" style="font-size: 0.9rem; padding: 0.5rem 1rem;">📍 Show Businesses Nearby</button></div>
-                    <div class="field"><label for="ci-street">Street Address</label><input type="text" id="ci-street" placeholder="Street Address" value="${sd.street || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
-                    <div class="field"><label for="ci-city">City</label><input type="text" id="ci-city" placeholder="City" value="${sd.city || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
+                    <div class="field">
+                        <label for="ci-street">Street Address</label>
+                        <div class="autocomplete-wrapper">
+                            <input type="text" id="ci-street" placeholder="Street Address" value="${sd.street || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
+                            <div id="ci-street-autocomplete" class="autocomplete-dropdown"></div>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="ci-city">City</label>
+                        <div class="autocomplete-wrapper">
+                            <input type="text" id="ci-city" placeholder="City" value="${sd.city || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
+                            <div id="ci-city-autocomplete" class="autocomplete-dropdown"></div>
+                        </div>
+                    </div>
                     <div class="field"><label for="ci-state">State</label><input type="text" id="ci-state" placeholder="State" maxlength="2" value="${sd.state || 'CA'}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
                     <div class="field"><label for="ci-zip">ZIP</label><input type="text" id="ci-zip" placeholder="ZIP" maxlength="10" value="${sd.zip || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
                     <div class="field"><label for="ci-contact">Contact Name</label><input type="text" id="ci-contact" placeholder="Contact Name" value="${sd.contact || ''}" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
@@ -7489,6 +7507,13 @@
                 
                 // Ensure button reflects current config state
                 updateGooglePlacesUI();
+                
+                // Initialize autocomplete for Customer Information modal fields
+                if (typeof setupAutocomplete === 'function') {
+                    setupAutocomplete('ci-customer', 'ci-customer-autocomplete');
+                    setupAutocomplete('ci-street', 'ci-street-autocomplete');
+                    setupAutocomplete('ci-city', 'ci-city-autocomplete');
+                }
                 
                 // Save button handler - async to support auto-create project
                 document.getElementById('saveCustomerInfoBtn').addEventListener('click', async () => {
@@ -19267,7 +19292,7 @@
                                             const parsed = await detailResponse.json();
                                             
                                             // Determine which function to call based on which field triggered the autocomplete
-                                            if (inputId === 'site-customer') {
+                                            if (inputId === 'site-customer' || inputId === 'ci-customer') {
                                                 // Customer field: fill all fields including customer name
                                                 selectBusiness({
                                                     name: parsed.name || result.main || '',
@@ -19522,10 +19547,17 @@
         
         // Auto-fill only address fields (used when editing street address, not customer)
         function selectAddress(addressData) {
+            // Main form fields (site-*)
             const streetInput = document.getElementById('site-street');
             const cityInput = document.getElementById('site-city');
             const stateInput = document.getElementById('site-state');
             const zipInput = document.getElementById('site-zip');
+            
+            // Customer Info modal fields (ci-*)
+            const ciStreetInput = document.getElementById('ci-street');
+            const ciCityInput = document.getElementById('ci-city');
+            const ciStateInput = document.getElementById('ci-state');
+            const ciZipInput = document.getElementById('ci-zip');
             
             // Only fill address-related fields, DO NOT touch customer name
             if (streetInput) streetInput.value = addressData.street || '';
@@ -19533,8 +19565,14 @@
             if (stateInput) stateInput.value = (addressData.state || 'CA').toUpperCase();
             if (zipInput) zipInput.value = addressData.zip || '';
             
+            // Also fill ci-* fields
+            if (ciStreetInput) ciStreetInput.value = addressData.street || '';
+            if (ciCityInput) ciCityInput.value = addressData.city || '';
+            if (ciStateInput) ciStateInput.value = (addressData.state || 'CA').toUpperCase();
+            if (ciZipInput) ciZipInput.value = addressData.zip || '';
+            
             // Update clear button visibility (no input events to avoid triggering autocomplete)
-            [streetInput, cityInput, stateInput, zipInput].forEach(input => {
+            [streetInput, cityInput, stateInput, zipInput, ciStreetInput, ciCityInput, ciStateInput, ciZipInput].forEach(input => {
                 if (input) {
                     updateClearButtonVisibility(input);
                 }
