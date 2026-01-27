@@ -16016,7 +16016,7 @@
         // Save Customer Info button - allows saving site details without units
         const saveProjectBtn = document.getElementById('saveProjectBtn');
         if (saveProjectBtn) {
-            saveProjectBtn.addEventListener('click', () => {
+            saveProjectBtn.addEventListener('click', async () => {
                 // Ensure customer field is filled
                 const customer = document.getElementById('site-customer').value.trim();
                 if (!customer) {
@@ -16026,10 +16026,8 @@
                 // Update siteData
                 autoSaveSiteDetails();
                 
-                // Save customer info even if no units yet
-                addProjectToSaved({ allowEmptyUnits: true });
-                
-                showToast(`Customer info saved for "${customer}". You can load it later from the dropdown above.`, 'success');
+                // Save customer info to server even if no units yet
+                await saveProjectWithNewSystem(false);
             });
         }
 
